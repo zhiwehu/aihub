@@ -97,7 +97,26 @@ export AIHUB_VAD_MODEL=/absolute/path/silero_vad.onnx
 .venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit
 ```
 
-### 启动
+### 一键启动
+
+工作区根目录的 `start.sh` 包好了一切（脚本本体在
+[`scripts/start_workspace.sh`](scripts/start_workspace.sh)，受版本管理）：
+
+```sh
+./start.sh                 # 前台启动，Ctrl+C 停止
+./start.sh --background    # 后台启动
+./start.sh --with-models   # 顺带拉起 asr/llm/tts
+./start.sh --status
+./start.sh --stop
+./start.sh --restart
+```
+
+它会：检查 venv、探测局域网 IP、生成并复用后处理服务令牌、启动后处理服务和
+服务端、打印设备 OTA 地址。端口被旧后端占用时直接给出停止命令，不会让你对着
+`service_port_in_use` 猜。
+
+### 手动启动
+
 
 ```sh
 export AIHUB_WEB_ROOT="$HOME/ai/aihub/aihub-web/public"
