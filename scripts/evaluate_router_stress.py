@@ -43,8 +43,8 @@ def main():
     rows=fresh+legacy
     dataset=''.join(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n' for row in rows)
     (output/'cases.jsonl').write_text(dataset)
-    from voicehub.rex_planner_worker import Engine
-    from training.rex_runtime import predict
+    from aihub_tools.rex_planner_worker import Engine
+    from aihub_tools.training.rex_runtime import predict
     engine=Engine(args.adapter)
     totals=defaultdict(Counter);raw=defaultdict(Counter);durations=[];results=[]
     with (output/'results.jsonl').open('w') as file:

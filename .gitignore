@@ -18,10 +18,15 @@ htmlcov/
 .env.*
 !.env.example
 
-# Model adapters, datasets and runtime output never enter the repository
-data/
+# Model adapters and runtime output never enter the repository
 *.safetensors
 *.jsonl
+data/*
+# Exception: the router training set ships with the code so results are reproducible.
+!data/training/
+data/training/*
+!data/training/router-everyday-v5/
 
 # macOS
 .DS_Store
+!data/training/router-everyday-v5/*.jsonl
