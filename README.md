@@ -82,11 +82,19 @@ uv pip install --python .venv/bin/python \
 
 模型权重不进仓库，只接受已缓存的本地副本：
 
+**VAD** 是另一件事：它必须内联在音频流里，所以留在服务端。默认查找
+`faster_whisper` 包自带的 `silero_vad_v6.onnx`；也可以显式指定：
+
+```sh
+export AIHUB_VAD_MODEL=/absolute/path/silero_vad.onnx
+```
+
+没有 VAD 时文字对话仍可用，语音会明确报错。
+
 ```sh
 .venv/bin/hf download mlx-community/Qwen3-ASR-0.6B-8bit
 .venv/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-4bit
 .venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit
-.venv/bin/python -m aihub_models download-vad --help    # 见 aihub-models
 ```
 
 ### 启动
