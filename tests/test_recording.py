@@ -1,0 +1,286 @@
+import json
+import tempfile
+import unittest
+import uuid
+import wave
+
+import numpy as np
+from pathlib import Path
+from unittest.mock import patch
+
+from aihub_server.recording import (Recordings, _wav_header, command, duration_text,
+                                normalize)
+
+
+class RecordingCommandTests(unittest.TestCase):
+    def test_start_variants(self):
+        for text in ('开始录音模式', '开始录音', '现在开始录音模式。', '帮我开始录音吧',
+                     '进入录音模式', '打开录音', '录音模式', '我想开始录音'):
+            self.assertEqual(command(text), 'start', text)
+
+    def test_stop_and_confirm_variants(self):
+        for text in ('停止录音模式', '结束录音', '停止录音。', '关闭录音模式',
+                     '退出录音模式', '别录了', '停止录音并保存'):
+            self.assertEqual(command(text), 'stop', text)
+        for text in ('确认停止', '确认结束录音', '确定停止录音模式', '确认',
+                     '确定', '确认停止并保存'):
+            self.assertEqual(command(text), 'confirm', text)
+
+    def test_mentions_and_questions_are_not_commands(self):
+        for text in ('录音功能怎么用', '我想了解一下录音模式', '这个录音能保存多久',
+                     '刚才开始录音了吗', '不要停止录音', '可以开始录音吗', '', '你好'):
+            self.assertIsNone(command(text), text)
+
+    def test_normalize_removes_asr_punctuation(self):
+        self.assertEqual(normalize('开 始 录 音，模 式。'), '开始录音模式')
+        self.assertEqual(normalize('停止录音模式！'), '停止录音模式')
+
+    def test_duration_text(self):
+        self.assertEqual(duration_text(0), '0秒')
+        self.assertEqual(duration_text(59), '59秒')
+        self.assertEqual(duration_text(60), '1分钟')
+        self.assertEqual(duration_text(125), '2分5秒')
+        self.assertEqual(duration_text(3600), '1小时')
+
+
+class RecordingsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.manager = Recordings(self.root)
+
+    def tearDown(self):
+        self.manager.close()
+        self.tmp.cleanup()
+
+    def test_voice_memo_roundtrip_writes_a_valid_wav(self):
+        recording = self.manager.start('session-a', 'browser', 'voice')
+        self.assertIsNone(recording.write(b'\x01\x00'*16000))
+        metadata = self.manager.stop(recording.id, 'web')
+        self.assertEqual(metadata['status'], 'stopped')
+        self.assertEqual(metadata['reason'], 'web')
+        self.assertEqual(metadata['duration_ms'], 1000)
+        self.assertEqual(metadata['samples'], 16000)
+        self.assertEqual(metadata['download_url'], f'/api/recordings/{recording.id}/audio')
+        path = self.manager.audio_path(recording.id)
+        self.assertTrue(path.is_file())
+        with wave.open(str(path), 'rb') as wav:
+            self.assertEqual(wav.getnchannels(), 1)
+            self.assertEqual(wav.getsampwidth(), 2)
+            self.assertEqual(wav.getframerate(), 16000)
+            self.assertEqual(wav.getnframes(), 16000)
+            self.assertEqual(wav.readframes(16000), b'\x01\x00'*16000)
+        self.assertEqual(self.manager.get(recording.id)['id'], recording.id)
+        self.assertEqual(len(self.manager.list()), 1)
+        self.assertFalse(self.manager.active)
+
+    def test_transcript_uses_one_line_per_pause_and_is_deleted_with_audio(self):
+        recording = self.manager.start('session-t', 'browser', 'voice')
+        self.assertEqual(recording.append_transcript('第一句话', 0), (1, '00:00', '第一句话'))
+        self.assertEqual(recording.append_transcript('第二句话。', 125000),
+                         (2, '02:05', '第二句话。'))
+        self.assertIsNone(recording.append_transcript('  \n  '))
+        active = self.manager.get(recording.id)
+        self.assertTrue(active['transcript_available'])
+        self.assertEqual(active['transcript_lines'], 2)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual(transcript['text'], '[00:00] 第一句话\n[02:05] 第二句话。')
+        self.assertEqual(transcript['lines'][0]['stamp'], '00:00')
+        self.assertEqual(transcript['lines'][1]['elapsed_ms'], 125000)
+        self.assertEqual(transcript['count'], 2)
+        transcript_path = recording.transcript_path
+        self.assertTrue(transcript_path.is_file())
+        metadata = self.manager.stop(recording.id, 'web')
+        self.assertTrue(metadata['transcript_available'])
+        self.assertEqual(metadata['transcript_url'],
+                         f'/api/recordings/{recording.id}/transcript')
+        self.assertEqual(self.manager.transcript(recording.id)['status'], 'stopped')
+        self.manager.delete(recording.id)
+        self.assertFalse(transcript_path.exists())
+        self.assertIsNone(self.manager.transcript(recording.id))
+
+    def test_speaker_prefixes_parse_and_can_be_relabelled(self):
+        recording = self.manager.start('session-speaker', 'device', 'voice')
+        recording.append_transcript('第一句', 0, '说话人1', 1)
+        recording.append_transcript('第二句', 2000, '说话人2', 2)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual([line['speaker'] for line in transcript['lines']],
+                         ['说话人1', '说话人2'])
+        self.assertEqual([line['text'] for line in transcript['lines']],
+                         ['第一句', '第二句'])
+        self.assertIn('说话人1：第一句', transcript['text'])
+        self.assertIsNone(recording.merge_transcript('不同人', '说话人1', 1))
+        self.assertEqual(recording.merge_transcript('第二句补充', '说话人2', 2),
+                         (2, '00:02', '第二句。第二句补充'))
+        recording.relabel_transcript({1: 1, 2: 1})
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual([line['speaker'] for line in transcript['lines']],
+                         ['说话人1', '说话人1'])
+        self.assertEqual(recording.speaker_count, 1)
+        self.assertIn('说话人1：第二句。第二句补充', transcript['text'])
+        self.assertNotIn('说话人2', transcript['text'])
+
+    def test_short_pause_merges_with_a_full_stop_instead_of_a_new_line(self):
+        recording = self.manager.start('session-join', 'device', 'voice')
+        self.assertEqual(recording.append_transcript('第一句话', 0),
+                         (1, '00:00', '第一句话'))
+        self.assertEqual(recording.merge_transcript('第二句话'),
+                         (1, '00:00', '第一句话。第二句话'))
+        self.assertEqual(recording.merge_transcript('，第三句话。'),
+                         (1, '00:00', '第一句话。第二句话。第三句话。'))
+        self.assertEqual(recording.append_transcript('第四句话，', 5000),
+                         (2, '00:05', '第四句话，'))
+        self.assertEqual(recording.merge_transcript('第五句话'),
+                         (2, '00:05', '第四句话。第五句话'))
+        self.assertEqual(recording.transcript_lines, 2)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual(transcript['count'], 2)
+        self.assertEqual(
+            transcript['text'],
+            '[00:00] 第一句话。第二句话。第三句话。\n[00:05] 第四句话。第五句话')
+        self.manager.stop(recording.id, 'web')
+        self.assertEqual(
+            recording.transcript_path.read_text(encoding='utf-8'),
+            '[00:00] 第一句话。第二句话。第三句话。\n[00:05] 第四句话。第五句话\n')
+
+    def test_speech_only_file_keeps_vad_trimmed_audio_and_is_deleted(self):
+        recording = self.manager.start('session-speech-audio', 'device', 'voice')
+        recording.write(b'\0\0'*16000)
+        recording.write_speech(b'\x01\x00'*8000)
+        metadata = self.manager.stop(recording.id, 'web')
+        self.assertTrue(metadata['speech_available'])
+        self.assertEqual(metadata['speech_duration_ms'], 500)
+        self.assertEqual(metadata['speech_audio_url'],
+                         f'/api/recordings/{recording.id}/speech')
+        path = self.manager.speech_path(recording.id)
+        self.assertTrue(path.is_file())
+        with wave.open(str(path), 'rb') as wav:
+            self.assertEqual(wav.getframerate(), 16000)
+            self.assertEqual(wav.getnframes(), 8000)
+            samples = np.frombuffer(wav.readframes(8000), '<i2')
+            self.assertEqual(samples[0], 0)
+            self.assertEqual(samples[-1], 0)
+            self.assertTrue(np.any(samples[200:-200] == 1))
+        self.manager.delete(recording.id)
+        self.assertFalse(path.exists())
+
+    def test_speech_time_mapping_is_written(self):
+        recording = self.manager.start('session-speech-map', 'device', 'voice')
+        recording.write(b'\0\0'*16000)
+        recording.write_speech(b'\0\0'*8000, 1200, 1700)
+        self.manager.stop(recording.id, 'web')
+        path = self.manager.speech_map_path(recording.id)
+        self.assertTrue(path.is_file())
+        data = json.loads(path.read_text())
+        self.assertEqual(data['full_duration_ms'], 1000)
+        self.assertEqual(len(data['segments']), 1)
+        self.assertEqual(data['segments'][0]['full_start_ms'], 1200)
+        self.assertEqual(data['segments'][0]['ready_end_ms'], 500)
+
+    def test_recording_without_speech_has_no_speech_only_file(self):
+        recording = self.manager.start('session-silent', 'device', 'voice')
+        recording.write(b'\0\0'*16000)
+        metadata = self.manager.stop(recording.id, 'web')
+        self.assertFalse(metadata['speech_available'])
+        self.assertIsNone(metadata['speech_audio_url'])
+        self.assertIsNone(self.manager.speech_path(recording.id))
+
+    def test_duration_cap_writes_no_more_than_configured_seconds(self):
+        manager = Recordings(self.root, max_seconds=1)
+        recording = manager.start('session-b', 'device', 'voice')
+        self.assertIsNone(recording.write(b'\0\0'*8000))
+        self.assertEqual(recording.write(b'\0\0'*8000), 'limit')
+        self.assertEqual(recording.write(b'\0\0'*8000), 'limit')
+        self.assertEqual(recording.samples, 16000)
+        manager.stop(recording.id, 'limit')
+        metadata = manager.get(recording.id)
+        self.assertEqual(metadata['duration_ms'], 1000)
+
+    def test_active_file_cannot_be_downloaded_or_deleted(self):
+        recording = self.manager.start('session-c', 'browser', 'web')
+        self.assertIsNone(self.manager.audio_path(recording.id))
+        with self.assertRaises(ValueError):
+            self.manager.delete(recording.id)
+
+    def test_delete_removes_audio_and_metadata(self):
+        recording = self.manager.start('session-d', 'browser', 'web')
+        recording.write(b'\0\0'*320)
+        self.manager.stop(recording.id, 'web')
+        path = self.manager.audio_path(recording.id)
+        self.manager.delete(recording.id)
+        self.assertFalse(path.exists())
+        self.assertFalse(self.manager.metadata_path(recording.id).exists())
+        self.assertIsNone(self.manager.get(recording.id))
+
+    def test_disk_full_refuses_to_start(self):
+        usage = type('Usage', (), {'free': 1})()
+        with patch('aihub_server.recording.shutil.disk_usage', return_value=usage):
+            with self.assertRaises(ValueError):
+                self.manager.start('session-e', 'browser', 'web')
+
+    def test_checkpoint_writes_active_sidecar_and_valid_header(self):
+        recording = self.manager.start('checkpoint', 'device', 'voice')
+        recording.write(b'\0\0'*1600)
+        recording.checkpoint()
+        sidecar = json.loads(self.manager.metadata_path(recording.id).read_text())
+        self.assertEqual(sidecar['status'], 'active')
+        self.assertEqual(sidecar['duration_ms'], 100)
+        with wave.open(str(recording.path), 'rb') as wav:
+            self.assertEqual(wav.getnframes(), 1600)
+        self.manager.stop(recording.id, 'web')
+
+    def test_active_sidecar_is_preserved_after_crash(self):
+        identity = uuid.uuid4().hex
+        root = self.manager.root
+        data = b'\0\0'*8000
+        (root/f'{identity}.wav').write_bytes(_wav_header(0)+data)
+        (root/f'{identity}.txt').write_text(
+            '[00:00] 说话人1：第一句\n[00:02] 说话人2：第二句\n',
+            encoding='utf-8')
+        started = 1700000000
+        (root/f'{identity}.json').write_text(json.dumps({
+            'id': identity, 'session_id': 'session-crash', 'device_id': 'dev-crash',
+            'status': 'active', 'trigger': 'voice', 'started_at': started,
+            'duration_ms': 500, 'speaker_count': 1,
+        }), encoding='utf-8')
+        recovered = Recordings(self.root)
+        self.addCleanup(recovered.close)
+        metadata = recovered.get(identity)
+        self.assertEqual(metadata['status'], 'recovered')
+        self.assertEqual(metadata['session_id'], 'session-crash')
+        self.assertEqual(metadata['device_id'], 'dev-crash')
+        self.assertEqual(metadata['started_at'], started)
+        self.assertEqual(metadata['speaker_count'], 2)
+        self.assertEqual(metadata['transcript_lines'], 2)
+        self.assertEqual(metadata['reason'], 'server_restart')
+        with wave.open(str(root/f'{identity}.wav'), 'rb') as wav:
+            self.assertEqual(wav.getnframes(), 8000)
+
+    def test_crash_recovery_repairs_header_and_creates_sidecar(self):
+        identity = uuid.uuid4().hex
+        path = self.manager.root/f'{identity}.wav'
+        path.write_bytes(_wav_header()+b'\0\0'*3200)
+        (self.manager.root/f'{identity}.txt').write_text('[00:03] 崩溃前的一行\n', encoding='utf-8')
+        recovered = Recordings(self.root)
+        self.addCleanup(recovered.close)
+        metadata = recovered.get(identity)
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata['status'], 'recovered')
+        self.assertEqual(metadata['samples'], 3200)
+        self.assertTrue(metadata['transcript_available'])
+        self.assertEqual(metadata['transcript_lines'], 1)
+        self.assertEqual(recovered.transcript(identity)['text'], '[00:03] 崩溃前的一行')
+        self.assertEqual(recovered.transcript(identity)['lines'][0]['stamp'], '00:03')
+        with wave.open(str(path), 'rb') as wav:
+            self.assertEqual(wav.getnframes(), 3200)
+
+    def test_second_start_in_same_session_is_rejected(self):
+        self.manager.start('session-f', 'browser', 'voice')
+        with self.assertRaises(ValueError):
+            self.manager.start('session-f', 'browser', 'voice')
+
+    def test_invalid_identity_never_escapes_the_recording_directory(self):
+        self.assertIsNone(self.manager.get('../settings'))
+        self.assertIsNone(self.manager.audio_path('../settings'))
+        with self.assertRaises(ValueError):
+            self.manager.delete('../settings')
