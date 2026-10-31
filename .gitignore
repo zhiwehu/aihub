@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Model weights and caches never enter the repository
+models/
+*.safetensors
+*.onnx
+*.wav
+*.mp3
+*.jsonl
+
+# macOS
+.DS_Store
