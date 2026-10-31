@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aihub-common"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared PCM, speech-text and timestamp primitives for AIHub"
 readme = "README.md"
 license = { file = "LICENSE" }
