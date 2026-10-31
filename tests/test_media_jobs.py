@@ -64,7 +64,41 @@ class MediaJobsTests(IsolatedAsyncioTestCase):
         self.assertEqual(stored['progress'], 100)
         self.assertEqual(stored['outputs'][0]['name'], 'clean')
         self.assertEqual(stored['outputs'][0]['bytes'], 1234)
-        self.assertEqual(stored['options'], {'profile': 'strong'})
+        self.assertEqual(stored['options'],
+                         {'profile': 'strong', 'source': 'audio', 'target': 'clean'})
+
+    async def test_ready_target_reads_the_speech_cut(self):
+        """The server asks for a denoised 'ready' cut built from the VAD-trimmed WAV."""
+        (self.recordings / f'{RID}-speech.wav').write_bytes(b'RIFF-speech')
+        seen = {}
+
+        def fake(source, destination, profile):
+            seen['source'] = source.name
+            seen['destination'] = destination.name
+            destination.write_bytes(b'RIFF-ready')
+            return {'bytes': 9, 'duration_ms': 100}
+
+        with mock.patch('aihub_models.media_jobs.clean_wav', fake):
+            job = await self.jobs.start('clean', RID,
+                                        {'profile': 'mild', 'source': 'speech',
+                                         'target': 'ready'})
+            await self.jobs.tasks[job['id']]
+        stored = self.jobs.get(job['id'])
+        self.assertEqual(stored['status'], 'done')
+        self.assertEqual(seen['source'], f'{RID}-speech.wav')
+        self.assertEqual(seen['destination'], f'{RID}-ready.wav')
+        self.assertEqual(stored['outputs'][0]['name'], 'ready')
+
+    async def test_speech_source_missing_is_reported(self):
+        with self.assertRaises(MediaJobError) as caught:
+            await self.jobs.start('clean', RID, {'source': 'speech', 'target': 'ready'})
+        self.assertEqual(caught.exception.code, 'recording_audio_missing')
+
+    async def test_unknown_source_and_target_are_rejected(self):
+        for bad in ({'source': 'microphone'}, {'target': 'cleaner'}):
+            with self.assertRaises(MediaJobError) as caught:
+                await self.jobs.start('clean', RID, bad)
+            self.assertEqual(caught.exception.code, 'invalid_options')
 
     async def test_failed_clean_reports_the_cleanup_code(self):
         from aihub_models.cleanup import CleanupError

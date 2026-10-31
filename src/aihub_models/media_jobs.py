@@ -38,6 +38,10 @@ STATUSES = ('queued', 'running', 'done', 'failed', 'cancelled', 'interrupted')
 JOB_ID = re.compile(r'[a-f0-9]{32}')
 MAX_QUEUED = 8
 CLEAN_PROFILES = ('mild', 'strong')
+#: ``audio`` is the untouched recording; ``speech`` is the VAD-trimmed copy the
+#: server writes next to it. The player prefers a denoised ``ready`` cut.
+CLEAN_SOURCES = ('audio', 'speech')
+CLEAN_TARGETS = ('clean', 'ready')
 
 
 class MediaJobError(RuntimeError):
@@ -135,6 +139,18 @@ class MediaJobs:
 
     # ---- validation ----------------------------------------------------
 
+    def source_path(self, recording_id, source='audio'):
+        """Resolve one input WAV inside the recordings root."""
+        if source not in CLEAN_SOURCES:
+            raise MediaJobError('invalid_options', '未知的音频来源。')
+        suffix = '' if source == 'audio' else '-speech'
+        return self.records_root / f'{recording_id}{suffix}.wav'
+
+    def target_path(self, recording_id, target='clean'):
+        if target not in CLEAN_TARGETS:
+            raise MediaJobError('invalid_options', '未知的输出版本。')
+        return self.records_root / f'{recording_id}-{target}.wav'
+
     def _validate(self, kind, recording_id, options):
         if kind not in KINDS:
             raise MediaJobError('invalid_job_kind', f'不支持的任务类型：{kind}')
@@ -142,13 +158,21 @@ class MediaJobs:
             raise MediaJobError('recording_not_found', '找不到这条录音。')
         if not isinstance(options, dict):
             raise MediaJobError('invalid_options', '任务参数必须是对象。')
-        if not (self.records_root / f'{recording_id}.wav').is_file():
-            raise MediaJobError('recording_audio_missing', '这条录音没有可用的音频文件。')
         if kind == 'clean':
             profile = options.get('profile', 'mild')
+            source = options.get('source', 'audio')
+            target = options.get('target', 'clean')
             if profile not in CLEAN_PROFILES:
                 raise MediaJobError('invalid_cleanup_profile', '未知的降噪档位。')
-            return {'profile': profile}
+            if source not in CLEAN_SOURCES:
+                raise MediaJobError('invalid_options', '未知的音频来源。')
+            if target not in CLEAN_TARGETS:
+                raise MediaJobError('invalid_options', '未知的输出版本。')
+            if not self.source_path(recording_id, source).is_file():
+                raise MediaJobError('recording_audio_missing', '这条录音没有可用的音频文件。')
+            return {'profile': profile, 'source': source, 'target': target}
+        if not self.source_path(recording_id, 'audio').is_file():
+            raise MediaJobError('recording_audio_missing', '这条录音没有可用的音频文件。')
         mode = options.get('mode', 'text')
         if mode not in ('text', 'asr'):
             raise MediaJobError('invalid_options', '重分轨只支持 text 或 asr 模式。')
@@ -247,13 +271,15 @@ class MediaJobs:
 
     async def _run_clean(self, job):
         recording_id = job['recording_id']
-        source = self.records_root / f'{recording_id}.wav'
-        destination = self.records_root / f'{recording_id}-clean.wav'
+        options = job['options']
+        source = self.source_path(recording_id, options.get('source', 'audio'))
+        destination = self.target_path(recording_id, options.get('target', 'clean'))
         stats = await asyncio.to_thread(
-            clean_wav, source, destination, job['options']['profile'])
+            clean_wav, source, destination, options['profile'])
         job['progress'] = 95
         self.save(job)
-        return [{'name': 'clean', 'path': str(destination),
+        return [{'name': options.get('target', 'clean'), 'path': str(destination),
+                 'source': options.get('source', 'audio'),
                  'bytes': stats['bytes'], 'duration_ms': stats['duration_ms']}]
 
     async def _run_diarize(self, job):
