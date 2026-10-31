@@ -47,7 +47,7 @@ class ManagedApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_stopped_builtin_does_not_fall_back_to_external_url(self):
         cfg = copy.deepcopy(DEFAULT)
         cfg['llm']['provider'] = 'builtin'
-        pipeline = Pipeline(cfg, self.app[HUB].http, self.app[HUB].local)
+        pipeline = Pipeline(cfg, self.app[HUB].http, self.app[HUB].runtime)
         with self.assertRaises(ProviderError):
             async for _ in pipeline.chat([]):
                 pass

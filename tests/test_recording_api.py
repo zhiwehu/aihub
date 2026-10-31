@@ -2,6 +2,7 @@ import asyncio
 import io
 import tempfile
 import unittest
+from unittest import mock
 import wave
 
 import numpy as np
@@ -170,6 +171,18 @@ class RecordingApiTests(unittest.IsolatedAsyncioTestCase):
         await self.client.post(f'/api/recordings/{recording["id"]}/stop')
         original = await (await self.client.get(
             f'/api/recordings/{recording["id"]}/audio')).read()
+        # Denoise is an aihub-models job now. This test covers the server side:
+        # that it asks the service and records the profile, not ffmpeg itself.
+        async def fake_run(recording_id, kind, options=None, timeout=1800):
+            self.assertEqual(kind, 'clean')
+            self.assertEqual(options['profile'], 'mild')
+            (self.app[HUB].recordings.root /
+             f'{recording_id}-clean.wav').write_bytes(original)
+            return {'status': 'done', 'outputs': []}
+
+        patcher = mock.patch('aihub_server.models_client.run', fake_run)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         response = await self.client.post(
             f'/api/recordings/{recording["id"]}/clean',
             json={'profile': 'mild'})

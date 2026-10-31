@@ -12,7 +12,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   self.tmp=tempfile.TemporaryDirectory();self.store=Store(Path(self.tmp.name)/'history.sqlite3');self.ops=Operations(self.tmp.name);self.events=[];self.release=asyncio.Event();self.started=asyncio.Event()
   parent=self
   class Pipeline:
-   local=SimpleNamespace(operations=parent.ops)
+   runtime=SimpleNamespace(operations=parent.ops)
    async def chat(self,history):
     if history[-1]['content']=='慢查询':
      yield ToolNotice('slow','收到，我来查询。');parent.started.set();yield ToolStatus('slow','started');await parent.release.wait();yield ToolStatus('slow','completed');yield '慢查询真实结果。'
@@ -54,7 +54,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
  async def test_workflow_owner_transfers_before_ack_so_explicit_cancel_reaches_executor(self):
   from aihub_tools.workflows.manager import WorkflowManager
   from aihub_server.config import DEFAULT
-  manager=WorkflowManager(self.tmp.name,lambda:DEFAULT);self.pipeline.local.workflows=manager
+  manager=WorkflowManager(self.tmp.name,lambda:DEFAULT);self.pipeline.runtime.workflows=manager
   task=manager.create('慢任务','one');manager.set_plan(task['id'],{'steps':[{'id':'text','tool':'text.compose','arguments':{'instruction':'测试'}}]})
   async def invoke(*args):self.started.set();await self.release.wait();return {'content':'不应完成'}
   manager._invoke=invoke
@@ -75,7 +75,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   from aihub_tools.calendar_reminders import CalendarReminders,notification_id
   from datetime import datetime,timedelta,timezone
   import time
-  calendar=CalendarReminders(self.tmp.name,self.ops,{'one':self.session},lambda event:None,lambda:True);self.pipeline.local.calendar_reminders=calendar
+  calendar=CalendarReminders(self.tmp.name,self.ops,{'one':self.session},lambda event:None,lambda:True);self.pipeline.runtime.calendar_reminders=calendar
   now=time.time();event=calendar.store.create('待取消提醒',(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),remind_minutes=1,device_id='fixture',now=now)
   await calendar.tick(now+1);calendar.store.cancel(event['event_id'])
   await self.wait_for(lambda:self.ops.get(notification_id(event['event_id']))['delivery']=='cancelled')
@@ -84,7 +84,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   from aihub_tools.calendar_reminders import CalendarReminders,notification_id
   from datetime import datetime,timedelta,timezone
   import time
-  calendar=CalendarReminders(self.tmp.name,self.ops,{'one':self.session},lambda event:None,lambda:True);self.pipeline.local.calendar_reminders=calendar
+  calendar=CalendarReminders(self.tmp.name,self.ops,{'one':self.session},lambda event:None,lambda:True);self.pipeline.runtime.calendar_reminders=calendar
   announcing=asyncio.Event();allow=asyncio.Event()
   async def speech(text):
    if text.startswith('日程提醒') and not allow.is_set():announcing.set();await allow.wait()
@@ -98,7 +98,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   from aihub_tools.calendar_chat import route
   from aihub_server.config import DEFAULT
   import json
-  calendar=CalendarStore(self.tmp.name);self.pipeline.local.calendar=calendar;self.pipeline.local.data_root=self.tmp.name;self.pipeline.config=DEFAULT
+  calendar=CalendarStore(self.tmp.name);self.pipeline.runtime.calendar=calendar;self.pipeline.runtime.data_root=self.tmp.name;self.pipeline.config=DEFAULT
   count=0
   async def raw_chat(*args,**kwargs):
    nonlocal count

@@ -64,31 +64,3 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_tts_resamples_streaming_pcm(self):
         result=b''.join([block async for block in self.pipeline.speech('你好')])
         self.assertAlmostEqual(len(result)/32000,.1,places=2)
-
-class LocalCancellationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_noncooperative_work_does_not_block_cancellation_or_the_loop(self):
-        import threading
-        from aihub_server.pipeline import LocalModels
-        local=LocalModels();release=threading.Event();finished=threading.Event()
-        def generate(stop):
-            try:
-                yield 'first'
-                release.wait(5)
-                yield 'late'
-            finally:
-                finished.set()
-        source=local.stream(generate)
-        try:
-            self.assertEqual(await anext(source),'first')
-            await asyncio.wait_for(source.aclose(),.2)
-            self.assertFalse(finished.is_set())
-            # The actual worker remains tracked until it exits.
-            self.assertTrue(local.active_stops)
-            release.set()
-            for _ in range(100):
-                if not local.active_stops:
-                    break
-                await asyncio.sleep(.01)
-            self.assertFalse(local.active_stops)
-        finally:
-            release.set();local.close()

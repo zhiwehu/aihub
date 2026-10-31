@@ -18,7 +18,7 @@ async def skills_api(request):
    if not isinstance(body,dict) or set(body)-{'arguments'}:raise ValueError('skill_arguments_invalid')
    scope='ui-'+uuid.uuid4().hex;hub.operations.check_capacity(scope);task=hub.skills.instantiate(identity,body.get('arguments',{}),scope)
    async def source():
-    pipeline=hub.factory(hub.config.get(),hub.http,hub.local);pipeline.session_id=scope
+    pipeline=hub.factory(hub.config.get(),hub.http,hub.runtime);pipeline.session_id=scope
     async with contextlib.aclosing(hub.workflows.run(task['id'],pipeline)) as stream:
      async for item in stream:yield item
    gate=asyncio.Event();record=hub.operations.start(scope,task['id'],task['goal'],source(),gate);gate.set()

@@ -13,7 +13,7 @@ class CalendarChatTests(unittest.IsolatedAsyncioTestCase):
   with tempfile.TemporaryDirectory() as root:
    store=CalendarStore(root)
    class Pipeline:
-    local=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
     async def raw_chat(self,*args,**kwargs):yield json.dumps({'title':'开会','date':'明天'})
    p=Pipeline();stream=route(p,[{'role':'user','content':'明天提醒我开会'}]);self.assertIsInstance(await anext(stream),ToolNotice)
    replies=[v async for v in stream];self.assertIn('几点',replies[-1]);self.assertFalse(store.load()['events'])
@@ -26,7 +26,7 @@ class CalendarChatTests(unittest.IsolatedAsyncioTestCase):
   with tempfile.TemporaryDirectory() as root:
    store=CalendarStore(root)
    class Pipeline:
-    local=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT;calls=0
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT;calls=0
     async def raw_chat(self,*args,**kwargs):
      self.calls+=1
      yield json.dumps({'title':'开会','date':'明天'} if self.calls==1 else {'title':'开会','date':'明天','time':'15:00'})
@@ -40,7 +40,7 @@ class CalendarChatTests(unittest.IsolatedAsyncioTestCase):
   with tempfile.TemporaryDirectory() as root:
    store=CalendarStore(root);future=datetime.now(timezone.utc)+timedelta(days=1);event=store.create('取快递',future.isoformat(),remind_minutes=0)
    class Pipeline:
-    local=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
     async def raw_chat(self,*args,**kwargs):yield json.dumps({'operation':'cancel','title':'取快递'})
    p=Pipeline();[v async for v in route(p,[{'role':'user','content':'取消取快递的提醒'}])]
    self.assertEqual(store.get(event['event_id'])['status'],'cancelled')

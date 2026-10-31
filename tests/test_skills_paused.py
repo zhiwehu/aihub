@@ -18,11 +18,11 @@ class SkillsPausedTests(unittest.IsolatedAsyncioTestCase):
      response=await client.request(method,url,json={} if method!='GET' else None);self.assertEqual(response.status,404)
     self.assertEqual((await client.get('/api/operations')).status,200)
     self.assertEqual((await client.get('/api/calendar/settings')).status,200)
-    self.assertEqual(path.read_text(),original);self.assertIsNone(app[HUB].local.skills)
+    self.assertEqual(path.read_text(),original);self.assertIsNone(app[HUB].runtime.skills)
  async def test_explicit_skill_request_does_not_reach_model_or_tools(self):
   from aihub_tools.tool_chat import chat
   class P:
-   local=SimpleNamespace(skills=None)
+   runtime=SimpleNamespace(skills=None)
    async def raw_chat(self,*args,**kwargs):raise AssertionError('paused skill must not call model');yield ''
   result=[v async for v in chat(P(),[{'role':'user','content':'执行技能 保存笔记'}])]
   self.assertIn('暂停',''.join(result))

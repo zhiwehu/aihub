@@ -13,11 +13,7 @@ Frames on the wire (both directions):
 import asyncio
 import itertools
 
-
-class DeviceMCPError(RuntimeError):
-    def __init__(self, code):
-        self.code = code
-        super().__init__(code)
+from aihub_tools.errors import DeviceMCPError
 
 
 class DeviceMCP:

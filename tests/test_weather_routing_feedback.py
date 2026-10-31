@@ -11,7 +11,7 @@ class WeatherRoutingFeedbackTests(unittest.IsolatedAsyncioTestCase):
  def pipeline(self):
   class Pipeline:
    config=copy.deepcopy(DEFAULT)
-   local=SimpleNamespace(operations=object())
+   runtime=SimpleNamespace(operations=object())
    async def raw_chat(self,history,**kwargs):
     yield '真实天气回答。' if '已执行工具' in history[-1]['content'] else '{"tool":null,"arguments":{}}'
   p=Pipeline();p.config['tools'].update(default_city='上海',planner='llm',weather=True);return p
@@ -36,6 +36,6 @@ class WeatherRoutingFeedbackTests(unittest.IsolatedAsyncioTestCase):
  async def test_feedback_precedes_slow_rex(self):
   p=self.pipeline();p.config['tools']['planner']='rex'
   async def plan(*args):await asyncio.sleep(10);return {'status':'chat','tool':None,'arguments':{}}
-  p.local.planner=SimpleNamespace(plan=plan)
+  p.runtime.planner=SimpleNamespace(plan=plan)
   source=chat(p,[{'role':'user','content':'北京今天会下雨吗'}]);first=await anext(source)
   self.assertIsInstance(first,ToolNotice);self.assertFalse(first.text);await source.aclose()

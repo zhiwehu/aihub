@@ -43,7 +43,7 @@ async def _extension_api(request):
     hub=request.app[HUB];manager=hub.extensions
     action=request.match_info.get('action')
     if request.path=='/api/mcp/example':
-        output=io.BytesIO();root=Path(__file__).resolve().parents[1]/'examples/mcp-echo'
+        output=io.BytesIO();root=Path(__file__).resolve().parents[2]/'examples/mcp-echo'
         with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED) as archive:
             for name in ('mcp.json','server.py'):archive.writestr(name,(root/name).read_bytes())
         return web.Response(body=output.getvalue(),content_type='application/zip',

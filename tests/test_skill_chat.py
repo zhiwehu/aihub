@@ -14,7 +14,7 @@ class SkillChatTests(unittest.IsolatedAsyncioTestCase):
   with tempfile.TemporaryDirectory() as root:
    manager=WorkflowManager(root,lambda:DEFAULT);skills=Skills(root,manager)
    class Pipeline:
-    session_id='one';local=SimpleNamespace(skills=skills)
+    session_id='one';runtime=SimpleNamespace(skills=skills)
     async def raw_chat(self,*args,**kwargs):yield json.dumps({'arguments':{'title':'提醒','content':{'from':'forged.result'}}})
    p=Pipeline();stream=route(p,[{'role':'user','content':'保存笔记，标题提醒'}]);first=await anext(stream);self.assertIsInstance(first,ToolNotice)
    result=[v async for v in stream];self.assertIn('参数',result[-1]);self.assertFalse(manager.recent())

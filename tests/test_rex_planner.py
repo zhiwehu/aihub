@@ -14,7 +14,7 @@ class RexIntegrationTests(unittest.IsolatedAsyncioTestCase):
             async def plan(self,*args):return copy.deepcopy(result)
         class Pipeline:
             config=copy.deepcopy(DEFAULT)
-            local=SimpleNamespace(planner=Planner())
+            runtime=SimpleNamespace(planner=Planner())
             async def raw_chat(self,history,**kwargs):
                 if result.get('tool'):
                     self.asserted_grounded='已执行工具' in history[-1]['content']
@@ -61,7 +61,7 @@ class RexIntegrationTests(unittest.IsolatedAsyncioTestCase):
         p=self.pipeline({})
         started=asyncio.Event()
         async def waiting(*args):started.set();await asyncio.Event().wait()
-        p.local.planner.plan=waiting
+        p.runtime.planner.plan=waiting
         source=chat(p,[{'role':'user','content':'查天气'}])
         task=asyncio.create_task(anext(source));await started.wait();task.cancel()
         with self.assertRaises(asyncio.CancelledError):await task

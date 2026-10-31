@@ -377,7 +377,7 @@ async def device_gateway(request, ws):
                 await ws.send_json({'type':'llm','text':event['text'],'emotion':'neutral','session_id':sid})
             elif kind == 'error':
                 await ws.send_json(event)
-        pipeline = hub.factory(cfg, hub.http, hub.local)
+        pipeline = hub.factory(cfg, hub.http, hub.runtime)
 
         async def device_mcp_send(payload):
             # The device runs its own MCP server; JSON-RPC rides the same socket.

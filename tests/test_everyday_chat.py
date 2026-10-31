@@ -20,7 +20,7 @@ class EverydayChat(unittest.IsolatedAsyncioTestCase):
    root=Path(d);cf=ConfigFile(root/'settings.json');cfg=cf.get();cfg['tools']['shopping_list']=True;cf.save(cfg)
    calls=[]
    class Pipeline:
-    local=SimpleNamespace(data_root=root)
+    runtime=SimpleNamespace(data_root=root)
     async def raw_chat(self,*args,**kwargs):calls.append('extract');yield '{"items":["两盒牛奶"]}'
    source=execute(Pipeline(),[{'role':'user','content':'把两盒牛奶加到购物清单'}],{'tool':'shopping_list','arguments':{'action':'add'}})
    self.assertIsInstance(await anext(source),ToolNotice);self.assertEqual(calls,[])
@@ -28,7 +28,7 @@ class EverydayChat(unittest.IsolatedAsyncioTestCase):
  async def test_missing_location_does_not_write(self):
   with tempfile.TemporaryDirectory() as d:
    class Pipeline:
-    local=SimpleNamespace(data_root=Path(d))
+    runtime=SimpleNamespace(data_root=Path(d))
     async def raw_chat(self,*args,**kwargs):yield '{"item":"护照"}'
    values=[v async for v in execute(Pipeline(),[{'role':'user','content':'帮我记住护照'}],{'tool':'item_memory','arguments':{'action':'remember'}})]
    self.assertIn('位置',values[-1]);self.assertFalse((Path(d)/'everyday/memory.json').exists())
@@ -46,7 +46,7 @@ class EverydayRouting(unittest.IsolatedAsyncioTestCase):
    class Planner:
     async def plan(self,*args):return {'status':'extract','tool':'timer','arguments':{}}
    class Pipeline:
-    config=cfg;local=SimpleNamespace(data_root=root,planner=Planner());session_id='test';device_id='robot'
+    config=cfg;runtime=SimpleNamespace(data_root=root,planner=Planner());session_id='test';device_id='robot'
     async def raw_chat(self,*args,**kwargs):yield '{"action":"start","name":"煮蛋"}'
    values=[v async for v in chat(Pipeline(),[{'role':'user','content':'创建一个五分钟的煮蛋计时器'}])]
    self.assertTrue(any(isinstance(v,ToolStatus) and v.name=='timer' and v.phase=='completed' for v in values))
@@ -67,7 +67,7 @@ class ExistingToolPriority(unittest.IsolatedAsyncioTestCase):
   cfg=copy.deepcopy(DEFAULT);cfg['tools'].update(planner='rex',timer=True,music=True)
   class Planner:
    async def plan(self,*args):raise AssertionError('Explicit music command must keep its route')
-  p=SimpleNamespace(config=cfg,local=SimpleNamespace(planner=Planner()))
+  p=SimpleNamespace(config=cfg,runtime=SimpleNamespace(planner=Planner()))
   source=chat(p,[{'role':'user','content':'暂停音乐'}])
   try:self.assertEqual((await anext(source)).name,'music')
   finally:await source.aclose()
@@ -89,7 +89,7 @@ class OrdinaryChatIsForeground(unittest.IsolatedAsyncioTestCase):
   class Planner:
    async def plan(self,*args):return {'status':'chat','tool':None,'arguments':{}}
   class P:
-   config=cfg;local=SimpleNamespace(planner=Planner())
+   config=cfg;runtime=SimpleNamespace(planner=Planner())
    async def raw_chat(self,*args,**kwargs):yield '八乘九等于七十二。'
   values=[v async for v in chat(P(),[{'role':'user','content':'八乘九等于多少'}])]
   self.assertTrue(all(isinstance(v,str) for v in values))
@@ -102,7 +102,7 @@ class BoundedFallback(unittest.IsolatedAsyncioTestCase):
    class Planner:
     async def plan(self,*args):return {'status':'chat','tool':None,'arguments':{}}
    class P:
-    config=cfg;local=SimpleNamespace(planner=Planner(),data_root=root);count=0;device_id='test';session_id='test'
+    config=cfg;runtime=SimpleNamespace(planner=Planner(),data_root=root);count=0;device_id='test';session_id='test'
     async def raw_chat(self,*args,**kwargs):self.count+=1;yield '{"tool":"timer","arguments":{"action":"start","name":"咖啡","duration_seconds":600}}'
    p=P();values=[v async for v in chat(p,[{'role':'user','content':'给咖啡这件事倒数五分钟'}])]
    call=next(v for v in values if isinstance(v,ToolStatus) and v.phase=='completed')
@@ -116,7 +116,7 @@ class FollowupSlots(unittest.IsolatedAsyncioTestCase):
    class Planner:
     async def plan(self,*args):return {'status':'chat','tool':None,'arguments':{}}
    class P:
-    config=cfg;local=SimpleNamespace(planner=Planner(),data_root=root);count=0
+    config=cfg;runtime=SimpleNamespace(planner=Planner(),data_root=root);count=0
     async def raw_chat(self,*args,**kwargs):
      self.count+=1;yield '{"tool":"item_memory","arguments":{"action":"remember","item":"雨伞"'+(',"location":"玄关"' if self.count>1 else '')+'}}'
    p=P();history=[{'role':'user','content':'记一下雨伞的位置'}];[v async for v in chat(p,history)]

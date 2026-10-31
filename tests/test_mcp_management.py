@@ -1,3 +1,23 @@
+import io
+import zipfile
+from pathlib import Path
+from aihub_tools.mcp_extensions import ExtensionManager
+
+
+def example_zip(extra=None):
+    """Build the example MCP package the upload endpoint accepts."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w') as archive:
+        root = Path(__file__).resolve().parents[1] / 'examples/mcp-echo'
+        if not root.is_dir():
+            root = Path.cwd() / 'examples/mcp-echo'
+        for name in ('mcp.json', 'server.py'):
+            archive.writestr(name, (root / name).read_bytes())
+        if extra:
+            archive.writestr(*extra)
+    return output.getvalue()
+
+
 import tempfile
 import unittest
 from aiohttp.test_utils import TestClient, TestServer
@@ -62,7 +82,6 @@ class McpManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('测试音乐',str(await response.json()))
 
     async def test_upload_route_accepts_bounded_packages_larger_than_normal_api_limit(self):
-        from tests.test_mcp_extensions import example_zip
         raw=example_zip(('notes.txt','x'*80000))
         self.assertGreater(len(raw),65536)
         response=await self.client.post('/api/mcp/import',data=raw)

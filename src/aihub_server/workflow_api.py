@@ -59,7 +59,7 @@ def launch(hub,identity):
  async def source():
   manager.jobs[identity]=asyncio.current_task()
   try:
-   pipeline=hub.factory(hub.config.get(),hub.http,hub.local);pipeline.session_id=task['session_id']
+   pipeline=hub.factory(hub.config.get(),hub.http,hub.runtime);pipeline.session_id=task['session_id']
    if manager.get(identity)['status']=='planning':await manager.plan(identity,pipeline)
    current=manager.get(identity)
    if current['status']=='waiting_input':yield current['question']

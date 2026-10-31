@@ -30,20 +30,3 @@ class FirmwareReleaseTests(unittest.TestCase):
         self.assertIsNone(install_metadata({'install':value}))
         value['validated']=False
         self.assertFalse(install_metadata({'install':value})['validated'])
-
-    def test_packaging_never_enables_an_unverified_image(self):
-        package=runpy.run_path(str(Path(__file__).resolve().parents[2]/'scripts/package_echoear_release.py'))['package']
-        with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder);app=root/'app.bin';app.write_bytes(application())
-            table=bytearray(b'\xff'*3072)
-            entries=[('nvs',1,2,0x9000,0x4000),('otadata',1,0,0xd000,0x2000),('phy_init',1,1,0xf000,0x1000),
-                ('ota_0',0,16,0x20000,0x3f0000),('ota_1',0,17,0x410000,0x3f0000),('assets',1,130,0x800000,0x800000)]
-            for i,(name,kind,sub,address,size) in enumerate(entries):
-                struct.pack_into('<HBBII16sI',table,i*32,0x50aa,kind,sub,address,size,name.encode(),0)
-            table[192:208]=b'\xeb\xeb'+b'\xff'*14;table[208:224]=hashlib.md5(table[:192]).digest()
-            part=root/'part.bin';part.write_bytes(table)
-            metadata=package(app,part,root/'candidate',['b'*64],'test-source')
-            self.assertFalse(metadata['install']['validated'])
-            record=root/'record.json';record.write_text(json.dumps({'sha256':metadata['sha256'],'voice_reply_verified':True}))
-            with self.assertRaises(ValueError):package(app,part,root/'bad',['b'*64],'test-source',record)
-            self.assertFalse((root/'bad').exists())

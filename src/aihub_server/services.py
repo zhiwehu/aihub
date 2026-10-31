@@ -24,7 +24,8 @@ class ServiceManager:
     def __init__(self,root,config,*,ports=None,worker_module='aihub_models.worker'):
         self.root=Path(root)/'services';self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.config=config;self.ports=dict(ports or PORTS);self.module=worker_module
-        self.project=Path(__file__).resolve().parents[1]
+        # src/aihub_server -> src -> repository root; workers and tests are resolved from there.
+        self.project=Path(__file__).resolve().parents[2]
         self.locks={k:asyncio.Lock() for k in KINDS};self.children={};self.errors={}
 
     def _record(self,kind):
@@ -119,7 +120,7 @@ class ServiceManager:
         self.errors.pop(kind,None)
         model=self.config()[kind]['model'];instance=uuid.uuid4().hex;token=secrets.token_urlsafe(32)
         env={key:value for key,value in os.environ.items() if key in
-             ('PATH','HOME','LANG','LC_ALL','TMPDIR','HF_HOME','HUGGINGFACE_HUB_CACHE','SSL_CERT_FILE')}
+             ('PATH','PYTHONPATH','HOME','LANG','LC_ALL','TMPDIR','HF_HOME','HUGGINGFACE_HUB_CACHE','SSL_CERT_FILE')}
         env.update(HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',TOKENIZERS_PARALLELISM='false',AIHUB_WORKER_TOKEN=token)
         arguments=[sys.executable,'-u','-m',self.module,'--kind',kind,'--model',model,
             '--port',str(self.ports[kind]),'--service-id',instance]

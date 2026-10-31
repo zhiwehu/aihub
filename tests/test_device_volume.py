@@ -28,7 +28,7 @@ class FakeDevice:
 def pipeline(device=None):
     config = copy.deepcopy(DEFAULT)
     config['tools'].update(device_volume=True)
-    return SimpleNamespace(config=config, device=device, local=None,
+    return SimpleNamespace(config=config, device=device, runtime=None,
                            raw_chat=lambda *a, **k: None)
 
 
