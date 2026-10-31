@@ -62,18 +62,88 @@ export AIHUB_MODELS_TOKEN=<serve 启动时打印的令牌>
 **网页客户端不在这个包里。** 服务端从 `AIHUB_WEB_ROOT`（默认 `<data>/web`）提供构建产物；
 没有构建时首页显示一行说明。
 
-## 启动
+## 快速开始
+
+本仓库是运行入口。六个仓库是平级目录，虚拟环境放在它们的父目录里：
 
 ```sh
-pip install aihub-server
-aihub-server --data ./data --device-host <局域网IP> --device-port 8766
+cd ~/ai/aihub
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python \
+  -e ./aihub-common -e ./aihub-tools -e "./aihub-models[local]" -e ./aihub-server \
+  pytest
 ```
 
-仅本机控制台时省略 `--device-host`。设备接入需要设备令牌：
+`[local]` 装上 MLX 推理（`mlx-lm`、`mlx-audio`）。**声纹不在里面**：发言人间隔需要
+`aihub-models[speaker]`（torch + speechbrain，体积很大），不装时录音照常工作，
+只是没有说话人标签，页面会提示 `recording.speaker_unavailable`。
+
+### 首次准备模型
+
+模型权重不进仓库，只接受已缓存的本地副本：
 
 ```sh
-aihub-server --data ./data --print-device-token
+.venv/bin/hf download mlx-community/Qwen3-ASR-0.6B-8bit
+.venv/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-4bit
+.venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit
+.venv/bin/python -m aihub_models download-vad --help    # 见 aihub-models
 ```
+
+### 启动
+
+```sh
+export AIHUB_WEB_ROOT="$HOME/ai/aihub/aihub-web/public"
+export AIHUB_MODELS_TOKEN="$(uuidgen)"        # 只在需要纪要/降噪时用
+.venv/bin/python -m aihub_server \
+  --data "$HOME/ai/aihub-data" --port 8765 \
+  --device-host <你的局域网IP> --device-port 8766
+```
+
+`--data` 指向的目录不存在时会自动生成默认 `settings.json`：ASR/LLM 用本地 Qwen，
+TTS 默认是 macOS `say`（Tingting，不加载模型，最快能出声）。
+
+### 拉起模型 worker
+
+```sh
+for kind in asr llm tts; do
+  curl -s -X POST "http://127.0.0.1:8765/api/services/$kind/start"
+done
+curl -s http://127.0.0.1:8765/api/services
+```
+
+`state` 从 `starting` 变 `running` 即就绪（ASR 实测约 10 秒，LLM 冷启动更久）。
+也可以点控制台「模型与语音」里的按钮。
+
+### 可选：后处理服务
+
+纪要、降噪、重分轨需要它：
+
+```sh
+.venv/bin/python -m aihub_models serve \
+  --data "$HOME/ai/aihub-data" --asr-model mlx-community/Qwen3-ASR-0.6B-8bit
+```
+
+服务端和它必须共用同一个 `AIHUB_MODELS_TOKEN`；没配时相关端点返回 503。
+
+### 端口
+
+| 端口 | 用途 |
+|---|---|
+| 8765 | 管理控制台 |
+| 8766 | 设备 WebSocket（需 `--device-host`） |
+| 8781 / 8782 / 8767 | ASR / LLM / TTS worker（由 supervisor 启动） |
+| 8790 | 后处理服务（可选） |
+
+模型 worker 的端口是固定的，**同时运行旧后端会冲突**（旧系统占着 8781/8782/8767）。
+
+### 设备令牌
+
+```sh
+.venv/bin/python -m aihub_server --data "$HOME/ai/aihub-data" --print-device-token
+```
+
+令牌存在 `<data>/auth.json`，不进仓库。设备需要把 OTA 地址指向新服务端的
+`http://<局域网IP>:8766/xiaozhi/ota/<令牌>/`。
 
 ## 测试
 
