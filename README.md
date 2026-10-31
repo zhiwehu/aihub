@@ -101,8 +101,21 @@ PYTHONPATH=src python -m pytest tests -q
 `voicehub-timer:` / `voicehub-calendar:`。它们是稳定 ID 的种子，改了会让已有提醒换 ID。
 需要改的话应当单独做一次带迁移的变更。
 
-**本轮未迁**：`scripts/` 下 20 个路由器训练/评测脚本、`data/training/router-everyday-v5/`
-数据集、以及依赖服务端完整配置 schema 的那批测试（`test_rex_planner`、`test_skills`、
-`test_calendar_chat` 等）。它们等 `aihub-server` 落地后再一起搬，见迁移计划。
+### 训练与评测
+
+`scripts/` 下是路由器的数据构建、训练与评测脚本，`data/training/router-everyday-v5/`
+是配套数据集（`train/validation/test.jsonl` + manifest，sha256 与 manifest 一致）。
+
+```sh
+export AIHUB_DATA_ROOT=./data     # 脚本默认相对路径
+python scripts/build_router_v5_data.py --help
+python scripts/train_rex_adapter.py --help
+```
+
+这些脚本按当时的环境写成，依赖本机缓存的基座模型和 adapter；它们**没有自动化测试**，
+只有语法检查。数据集进仓库是为了让评测结果可复现。
+
+依赖服务端完整配置 schema 的测试（`test_rex_planner`、`test_skills`、`test_calendar_chat`
+等）放在 `aihub-server` 的测试里——那里才有 `config` 模块。
 
 原创代码 MIT（见 [LICENSE](LICENSE)）。
