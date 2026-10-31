@@ -87,8 +87,25 @@ node --check public/*.js public/*.mjs
 node tests/test_mcp_calls.mjs
 ```
 
-只有 4 个自动化用例。**本轮没有在真实浏览器里跑过页面**：没有加载页面、没有点过录音、
-没有验证样式和窄屏布局。静态语法检查和单元测试通过，不等于界面可用。
-`app.js` 仍是单个大文件，拆分和加构建工具是后续任务。
+只有 4 个自动化用例。
+
+### 浏览器验证（2026-10-31，Chrome headless / Playwright）
+
+对着真实服务端（`aihub-server --data … --port 8807`，`AIHUB_WEB_ROOT` 指向本仓库
+`public/`）跑过一轮：
+
+| 检查 | 结果 |
+|---|---|
+| 首屏加载、事件流连接 | 正常，控制台 **0 个 error / pageerror** |
+| 切换 5 个视图（连接、模型、录音、MCP、网页聊天） | 无报错 |
+| 「客户端接入」渲染客户端卡片与向导 | 正常 |
+| 选中 EchoEar（移除刷机面板的那条分支） | 无报错，`#echoear-installer` 不存在，高级连接设置仍可见 |
+| 390×844 窄屏 | 无横向溢出，导航折叠成横条，卡片堆叠 |
+
+**没有验证的**：真实麦克风收音、语音识别与回复播放的完整链路（需要声卡和已启动的模型
+worker）。`app.js` 仍是单个大文件，没有构建工具；界面文案仍写作「声桥 VoiceHub」，
+是否改成 AIHub 属于产品命名决定，不在本次拆分范围内。
+
+截图：`/tmp/aihub-connections.png`、`/tmp/aihub-narrow.png`（临时文件，不入库）。
 
 原创代码 MIT（见 [LICENSE](LICENSE)）。
