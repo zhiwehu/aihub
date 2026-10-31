@@ -18,6 +18,10 @@ htmlcov/
 .env.*
 !.env.example
 
+# Runtime data written by 'aihub_models serve --data ./data' (job records,
+# meeting minutes). The workspace keeps this outside every repository.
+data/
+
 # Model weights and caches never enter the repository
 models/
 *.safetensors
