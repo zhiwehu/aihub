@@ -20,9 +20,9 @@ a fallback):
   speaker.
 """
 
-import os
-
 import numpy as np
+
+from .env import env_value
 
 __all__ = ["SpeakerUnavailable", "SpeakerTracker", "normalize"]
 
@@ -42,18 +42,9 @@ def normalize(vector):
     return vector / norm
 
 
-def _env_value(name, default):
-    """Read ``AIHUB_<name>``, falling back to the pre-split ``VOICEHUB_<name>``."""
-    for prefix in ('AIHUB_', 'VOICEHUB_'):
-        raw = os.environ.get(prefix + name)
-        if raw is not None:
-            return raw
-    return default
-
-
 def _env_float(name, default, low, high):
     try:
-        value = float(_env_value(name, default))
+        value = float(env_value(name, default))
     except (TypeError, ValueError):
         return default
     return min(high, max(low, value))
@@ -61,7 +52,7 @@ def _env_float(name, default, low, high):
 
 def _env_int(name, default, low, high):
     try:
-        value = int(_env_value(name, default))
+        value = int(env_value(name, default))
     except (TypeError, ValueError):
         return default
     return min(high, max(low, value))

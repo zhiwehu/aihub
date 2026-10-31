@@ -5,6 +5,7 @@ AIHub package. Everything here is a pure function, a plain exception type, or a
 model-free algorithm over numpy arrays.
 """
 
+from .env import env_value
 from .errors import ProviderError
 from .pcm import TARGET_RATE, to_pcm16
 from .speaker import SpeakerTracker, SpeakerUnavailable, normalize
@@ -13,6 +14,7 @@ from .stamp import stamp_ms, stamp_text
 
 __all__ = [
     "ProviderError",
+    "env_value",
     "SpeakerTracker",
     "SpeakerUnavailable",
     "TARGET_RATE",
