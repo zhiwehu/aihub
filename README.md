@@ -105,11 +105,17 @@ export AIHUB_VAD_MODEL=/absolute/path/silero_vad.onnx
 ```sh
 ./start.sh                 # 全部启动：后处理服务 + 服务端 + asr/llm/tts
 ./start.sh --background    # 同上，后台常驻
+./start.sh --tts qwen      # 语音合成切到本机 Qwen3-TTS（只需一次，写进配置）
+./start.sh --tts system    # 切回 macOS 自带的 say
 ./start.sh --no-models     # 只起服务端，不加载模型（只想看界面时用）
 ./start.sh --status
 ./start.sh --stop
 ./start.sh --restart
 ```
+
+**默认的 TTS 是 macOS `say`**（`tts.provider = 'macos'`），不需要任何模型，所以新数据
+目录首次启动时听到的是 Tingting。想要本机的 Qwen3-TTS 就加一次 `--tts qwen`：它通过
+配置接口把 `provider` 改成 `builtin`、写进 `settings.json`，之后每次都生效。
 
 **默认就是全部启动。** 只对 `provider=builtin` 的模型发起启动——TTS 默认是 macOS
 `say`（`system`），不会去等它，所以不会白等到超时。

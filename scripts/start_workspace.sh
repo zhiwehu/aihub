@@ -22,6 +22,9 @@ LOGFILE="$DATA/server.log"
 MEDIA_LOG="$DATA/media.log"
 TOKENFILE="$DATA/.models-token"
 ASR_MODEL="${AIHUB_ASR_MODEL:-mlx-community/Qwen3-ASR-0.6B-8bit}"
+TTS_MODE="${AIHUB_TTS:-keep}"
+Qwen_TTS_MODEL="${AIHUB_TTS_MODEL:-mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit}"
+Qwen_TTS_VOICE="${AIHUB_TTS_VOICE:-Serena}"
 
 BACKGROUND=0
 WITH_MODELS=1
@@ -34,6 +37,8 @@ usage() {
   (无参数)          前台启动；Ctrl+C 停止
   -b, --background  后台启动
       --no-models   只起服务端，不加载模型（快速看界面时用）
+      --tts qwen    把语音合成切到本机 Qwen3-TTS（需要已缓存模型）
+      --tts system  切回 macOS 自带的 say
       --all         显式表示全部启动（默认行为，保留是为了好读）
       --status      查看状态
       --stop        停止（含模型 worker 与后处理服务）
@@ -53,6 +58,7 @@ while [ $# -gt 0 ]; do
     -b|--background) BACKGROUND=1 ;;
     --with-models|--all) WITH_MODELS=1 ;;
     --no-models)     WITH_MODELS=0 ;;
+    --tts)           TTS_MODE="$2"; shift ;;
     --status)        ACTION=status ;;
     --stop)          ACTION=stop ;;
     --restart)       ACTION=restart ;;
@@ -213,6 +219,34 @@ if ! http_ok "$PORT" /api/status; then
   say "服务端没有起来，日志尾部："
   tail -20 "$LOGFILE" >&2
   exit 1
+fi
+
+if [ "$TTS_MODE" != "keep" ]; then
+  case "$TTS_MODE" in
+    qwen)
+      patched=$(curl -s -m 5 "http://127.0.0.1:$PORT/api/config" | "$PY" -c '
+import json,sys
+cfg=json.load(sys.stdin)["config"]
+cfg["tts"].update(provider="builtin", model=sys.argv[1], voice=sys.argv[2], sample_rate=24000)
+json.dump(cfg,sys.stdout,ensure_ascii=False)' "$Qwen_TTS_MODEL" "$Qwen_TTS_VOICE" || true)
+      label="Qwen3-TTS ($Qwen_TTS_VOICE)" ;;
+    system)
+      patched=$(curl -s -m 5 "http://127.0.0.1:$PORT/api/config" | "$PY" -c '
+import json,sys
+cfg=json.load(sys.stdin)["config"]
+cfg["tts"].update(provider="macos", model="tts-1", voice="Tingting", sample_rate=24000)
+json.dump(cfg,sys.stdout,ensure_ascii=False)' || true)
+      label="macOS say (Tingting)" ;;
+    *) fail "--tts 只接受 qwen 或 system" ;;
+  esac
+  if [ -n "${patched:-}" ]; then
+    code=$(printf '%s' "$patched" | curl -s -o /dev/null -w '%{http_code}' -m 10 -X PUT \
+      -H 'Content-Type: application/json' --data-binary @- "http://127.0.0.1:$PORT/api/config" || echo 000)
+    if [ "$code" = "200" ]; then say "语音合成: ${label}"
+    else say "语音合成切换失败 (HTTP $code)，保持原配置"; fi
+  else
+    say "语音合成切换失败：读不到当前配置"
+  fi
 fi
 
 if [ "$WITH_MODELS" = 1 ]; then
