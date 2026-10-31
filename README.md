@@ -1,0 +1,94 @@
+# aihub-web
+
+AIHub 的网页控制台与语音聊天客户端：模型配置、连接实验室、录音工作台、MCP 工具、
+任务链、日程与统计页。
+
+纯静态文件，没有构建步骤，也没有运行时依赖。
+
+## 目录
+
+```text
+public/
+├── index.html            单页外壳
+├── app.js                主逻辑（约 92 KB，尚未拆分模块）
+├── connections.js        客户端接入向导、设备与固件状态
+├── capture.js            浏览器麦克风采集
+├── mcp-*.js/.mjs         MCP 工具、扩展、设置、调用记录
+├── workflows-ui.js       任务链
+├── skills-ui.js          技能
+├── calendar-ui.js        日程
+├── everyday-ui.js        购物清单 / 计时器 / 物品记录
+├── file-organizer-ui.js  文件整理
+├── operations-ui.js      后台任务
+└── style.css
+tests/
+└── test_mcp_calls.mjs    调用记录合并的单元测试
+```
+
+## 怎么被服务
+
+`aihub-server` 从 `AIHUB_WEB_ROOT`（默认 `<data>/web`）提供这些文件：
+
+- `/` → `index.html`
+- `/static/*` → 同目录下的资源
+
+所以把 `public/` 的内容复制到 `<data>/web` 即可，也可以直接指向这个目录：
+
+```sh
+export AIHUB_WEB_ROOT=/Users/you/ai/aihub/aihub-web/public
+```
+
+**没有安装构建产物时，服务端首页会显示一行说明**，不会白屏。
+
+## 依赖的服务端契约
+
+| 用途 | 端点 |
+|---|---|
+| 会话与事件 | `WS /ws`（协议 v1）、`GET /api/events` |
+| 配置 | `GET/PUT /api/config`、`GET /api/status` |
+| 录音 | `GET/POST /api/recordings…`、`GET /api/recordings/{id}/ready` |
+| 会议纪要 | `GET/POST /api/recordings/{id}/minutes…`（服务端代理到 `aihub-models`） |
+| 工具与扩展 | `GET /api/mcp…`、`POST /api/mcp/import` |
+| 任务链 | `GET/POST /api/workflows…` |
+| 客户端接入 | `GET /api/connections`、`GET /api/clients/{client}/…` |
+
+管理接口需要同源访问，或在 `127.0.0.1` 上直连。
+
+## 刷机助手不在这个仓库
+
+USB 刷机（Web Serial、NVS、备份恢复）是设备专属能力，属于
+[`aihub-firmware`](../aihub-firmware)。控制台只保留"客户端接入"向导和连接设置。
+
+两边通过 `window` 事件通信，改名必须同时改：
+
+| 契约 | 方向 | 说明 |
+|---|---|---|
+| `window.AIHubFlasher` | 固件模块注册 | 存在时控制台认为刷机面板可用 |
+| `aihub:firmware` | 控制台 → 模块 | 下发清单里选定的固件（`detail` 含 download 与 sha256） |
+| `aihub:connection-prepared` | 模块 → 控制台 | 配网就绪，刷新设备状态 |
+
+没有加载刷机模块时，`connections.js` 仍然可用：它会跳过 `#echoear-installer`
+面板，只丢掉刷机这一步。
+
+## 迁移说明
+
+从单体仓库 `miaoban-voicehub` 的 `voicehub/static/` 迁出，**不带旧提交历史**。
+
+1. **自定义事件全部改名** `voicehub:*` → `aihub:*`，与 `aihub-firmware` 对齐。
+2. **`localStorage` 键改名**（`voicehub-client` → `aihub-client` 等）。代价是升级后
+   浏览器里保存的麦克风选择和上次页面会重置一次，之后的偏好正常保留。
+3. **刷机面板及其脚本从控制台移除**，见上一节。
+4. `mcp-calls.mjs` 的单元测试跟过来，路径改为 `../public/`。
+
+## 测试
+
+```sh
+node --check public/*.js public/*.mjs
+node tests/test_mcp_calls.mjs
+```
+
+只有 4 个自动化用例。**本轮没有在真实浏览器里跑过页面**：没有加载页面、没有点过录音、
+没有验证样式和窄屏布局。静态语法检查和单元测试通过，不等于界面可用。
+`app.js` 仍是单个大文件，拆分和加构建工具是后续任务。
+
+原创代码 MIT（见 [LICENSE](LICENSE)）。
