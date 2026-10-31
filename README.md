@@ -103,17 +103,20 @@ export AIHUB_VAD_MODEL=/absolute/path/silero_vad.onnx
 [`scripts/start_workspace.sh`](scripts/start_workspace.sh)，受版本管理）：
 
 ```sh
-./start.sh                 # 前台启动，Ctrl+C 停止
-./start.sh --background    # 后台启动
-./start.sh --with-models   # 顺带拉起 asr/llm/tts
+./start.sh                 # 全部启动：后处理服务 + 服务端 + asr/llm/tts
+./start.sh --background    # 同上，后台常驻
+./start.sh --no-models     # 只起服务端，不加载模型（只想看界面时用）
 ./start.sh --status
 ./start.sh --stop
 ./start.sh --restart
 ```
 
+**默认就是全部启动。** 只对 `provider=builtin` 的模型发起启动——TTS 默认是 macOS
+`say`（`system`），不会去等它，所以不会白等到超时。
+
 它会：检查 venv、探测局域网 IP、生成并复用后处理服务令牌、启动后处理服务和
-服务端、打印设备 OTA 地址。端口被旧后端占用时直接给出停止命令，不会让你对着
-`service_port_in_use` 猜。
+服务端、拉起受管模型 worker、打印设备 OTA 地址。端口被旧后端占用时直接给出停止
+命令，不会让你对着 `service_port_in_use` 猜。
 
 ### 手动启动
 

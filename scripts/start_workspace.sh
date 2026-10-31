@@ -24,7 +24,7 @@ TOKENFILE="$DATA/.models-token"
 ASR_MODEL="${AIHUB_ASR_MODEL:-mlx-community/Qwen3-ASR-0.6B-8bit}"
 
 BACKGROUND=0
-WITH_MODELS=0
+WITH_MODELS=1
 ACTION=start
 
 usage() {
@@ -33,7 +33,8 @@ usage() {
 
   (无参数)          前台启动；Ctrl+C 停止
   -b, --background  后台启动
-      --with-models 同时拉起 asr / llm / tts 三个模型 worker
+      --no-models   只起服务端，不加载模型（快速看界面时用）
+      --all         显式表示全部启动（默认行为，保留是为了好读）
       --status      查看状态
       --stop        停止（含模型 worker 与后处理服务）
       --restart     先停后起
@@ -50,7 +51,8 @@ TXT
 while [ $# -gt 0 ]; do
   case "$1" in
     -b|--background) BACKGROUND=1 ;;
-    --with-models)   WITH_MODELS=1 ;;
+    --with-models|--all) WITH_MODELS=1 ;;
+    --no-models)     WITH_MODELS=0 ;;
     --status)        ACTION=status ;;
     --stop)          ACTION=stop ;;
     --restart)       ACTION=restart ;;
@@ -214,17 +216,38 @@ if ! http_ok "$PORT" /api/status; then
 fi
 
 if [ "$WITH_MODELS" = 1 ]; then
-  say "拉起模型 worker（首次加载较慢）…"
-  for kind in asr llm tts; do curl -s -o /dev/null -m 10 -X POST "http://127.0.0.1:$PORT/api/services/$kind/start" || true; done
-  for _ in $(seq 1 120); do
-    ready=$(curl -s -m 3 "http://127.0.0.1:$PORT/api/services" | "$PY" -c '
+  managed_kinds=$(curl -s -m 5 "http://127.0.0.1:$PORT/api/services" | "$PY" -c '
 import json,sys
 try: rows=json.load(sys.stdin)
-except Exception: print(0); raise SystemExit
-print(sum(1 for s in rows if s.get("state") in ("running","failed")))' 2>/dev/null || echo 0)
-    [ "$ready" = "3" ] && break
-    sleep 2
-  done
+except Exception: raise SystemExit
+print(" ".join(s["kind"] for s in rows if s.get("managed")))' || true)
+  external_kinds=$(curl -s -m 5 "http://127.0.0.1:$PORT/api/services" | "$PY" -c '
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: raise SystemExit
+print(" ".join(s["kind"] for s in rows if not s.get("managed")))' || true)
+
+  if [ -z "${managed_kinds:-}" ]; then
+    say "没有可启动的本机模型（全部是系统或远端提供商），跳过。"
+  else
+    [ -z "${external_kinds:-}" ] || say "跳过非受管提供商: ${external_kinds}（系统或远端，无需启动）"
+    say "拉起模型 worker: ${managed_kinds}（首次加载较慢，LLM 可能要一两分钟）…"
+    for kind in $managed_kinds; do
+      curl -s -o /dev/null -m 10 -X POST "http://127.0.0.1:$PORT/api/services/$kind/start" || true
+    done
+    for _ in $(seq 1 150); do
+      settled=$(curl -s -m 3 "http://127.0.0.1:$PORT/api/services" | "$PY" -c '
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: print("0 0"); raise SystemExit
+managed=[s for s in rows if s.get("managed")]
+print(sum(1 for s in managed if s.get("state") in ("running","failed")), len(managed))' 2>/dev/null || echo "0 0")
+      done_n=${settled% *}
+      total_n=${settled#* }
+      [ "${done_n:-0}" = "${total_n:-1}" ] && break
+      sleep 2
+    done
+  fi
 fi
 
 show_status
