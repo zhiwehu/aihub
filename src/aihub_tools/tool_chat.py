@@ -46,7 +46,7 @@ _VOLUME_ERRORS = {
 async def device_turn(pipeline, arguments):
     """Run a device-side MCP tool inline: no ToolNotice, so no background hand-off."""
     from .mcp_tools import device_volume
-    from .device_mcp import DeviceMCPError
+    from .errors import DeviceMCPError
     started = time.monotonic()
     yield ToolStatus('device_volume', 'started', arguments=arguments, planner='device_rules')
     try:
