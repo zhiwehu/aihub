@@ -25,6 +25,7 @@ ERRORS = {
     'cleanup_unavailable': '本机没有可用的 ffmpeg，无法降噪。',
     'cleanup_failed': '降噪处理失败，请检查原始音频。',
     'cleanup_timeout': '降噪处理超时。',
+    'ready_unavailable': '精简音频还没生成好，请稍后重试。',
 }
 
 
@@ -115,6 +116,10 @@ async def recording_api(request):
                                 'profile': 'mild', 'source': 'speech', 'target': 'ready'})
                         except models_client.ModelsUnavailable as exc:
                             return error(str(exc), 503)
+                if not target.is_file():
+                    # The job reported success but produced nothing usable; say so
+                    # instead of letting FileResponse raise.
+                    return error('ready_unavailable', 503)
             return web.FileResponse(target, headers={
                 'Content-Type': 'audio/wav',
                 'Cache-Control': 'no-store',
