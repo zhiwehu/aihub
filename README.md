@@ -101,6 +101,7 @@ PYTHONPATH=src python -m pytest tests -q
 | 用例 | 状态 |
 |---|---|
 | `test_wake_phrase_alone_activates_without_creating_empty_reply` | 拆分前就存在，与本轮无关 |
-| `test_background_session::test_calendar_notification_cancelled_before_speech_is_not_announced` | 待查；等待提醒投递状态超时 |
+
+其余 259 项通过（含 18 个子测试）。
 
 原创代码 MIT（见 [LICENSE](LICENSE)）。

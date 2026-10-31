@@ -515,7 +515,7 @@ class Session:
             return
         if (metadata.get('duration_ms') or 0) < 2000:
             return
-        data_root = getattr(getattr(self.pipeline, 'local', None), 'data_root', None)
+        data_root = getattr(getattr(self.pipeline, 'runtime', None), 'data_root', None)
         if not data_root:
             return
         recording_id = recording.id
@@ -734,7 +734,7 @@ class Session:
                                         if not turn.text.strip():
                                             feedback=phrasing.progress(text)
                                         operation=self.operations.start(self.id,turn.id,text,source,gate,self.emit_operation,progress_text=feedback)
-                                        manager=getattr(getattr(self.pipeline,'local',None),'workflows',None)
+                                        manager=getattr(getattr(self.pipeline,'runtime',None),'workflows',None)
                                         if manager:manager.transfer_owner(asyncio.current_task(),self.operations.tasks[operation['id']])
                                     except ValueError:
                                         message='后台任务数量已满，请等待已有任务完成。'
@@ -894,14 +894,14 @@ class Session:
                 while self.turn or self.input_active or self.recording is not None or time.monotonic()-self.last_activity<.5:
                     await asyncio.sleep(.1)
                 if self.closed:return
-                calendar=getattr(getattr(self.pipeline,'local',None),'calendar_reminders',None)
+                calendar=getattr(getattr(self.pipeline,'runtime',None),'calendar_reminders',None)
                 if record.get('kind')=='calendar' and calendar:
                     event=calendar.store.get(record['event_id'])
                     if not calendar.enabled():calendar.store.mark(event['event_id'],'muted');calendar.cancel_notification(event['event_id'])
                     elif event['status']=='cancelled':calendar.cancel_notification(record['event_id'])
                     elif time.time()-event['remind_at']>calendar.store.settings()['late_minutes']*60:
                         calendar.store.mark(event['event_id'],'missed');calendar.cancel_notification(event['event_id'])
-                timers=getattr(getattr(self.pipeline,'local',None),'timer_reminders',None)
+                timers=getattr(getattr(self.pipeline,'runtime',None),'timer_reminders',None)
                 if record.get('kind')=='timer' and (not timers or not timers.valid(record)):
                     fresh=self.operations.get(record['id']);fresh['delivery']='cancelled';self.operations.save(fresh)
                 if self.operations.get(record['id'])['delivery']!='pending':
@@ -928,7 +928,7 @@ class Session:
     async def idle(self):
         if self.recording is not None:
             return  # 录音模式由用户明确停止，不能因空闲自动回到待机。
-        timers=getattr(getattr(self.pipeline,'local',None),'timer_reminders',None)
+        timers=getattr(getattr(self.pipeline,'runtime',None),'timer_reminders',None)
         if timers and timers.enabled() and timers.store.running(self.device_id):return
         if self.operations and (self.notification_ids or any(self.operations.get(identity)['session_id']==self.id for identity in self.operations.tasks)):
             return  # Keep the voice channel available for long-running completion announcements.
