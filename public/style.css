@@ -363,9 +363,10 @@ p {
   display: block;
   font-size: 10px;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Wrap instead of truncating: these lines carry model ids and per-service
+     memory, and a clipped value is worse than a second line. */
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 .metrics #vad-status,
 .metrics #engine-status {
