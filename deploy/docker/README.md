@@ -123,6 +123,9 @@ docker 网关进来（`172.x`），peer 不再是 loopback，按原逻辑每次�
 | 限制 | 说明 |
 |---|---|
 | 固件配网（首次联网）不支持 | `prepare` 要枚举本机网卡选局域网，容器里看不到宿主网卡；已配网的设备走 OTA 正常 |
+| 工具规划器只能用 LLM | Rex 规划器加载 `<data>/rex-runtime`，那是 macOS 的 pip 目录（`tokenizers.abi3.so` 是 Mach-O），Linux 容器里报 `invalid ELF header`；`configure.sh` 会切到 `planner=llm` |
+| 外网工具偏慢 | 实测容器到部分国际站点的 TLS 握手约 6.1 s（宿主 0.55 s），而天气工具预算只有 6 s，可能超时；新闻同理。模型调用走 `host.docker.internal`，不受影响 |
+| 文件工具只能看挂载目录 | 服务端跑在容器里，`file_directory` / `music_directory` 解析的是容器路径；要整理宿主目录得 `-v` 挂载并把配置改成容器内路径 |
 | 8766 占用 | 端口发布在宿主，若别的服务（例如那个 `python -m http.server`）也占了 8766，需要先让位 |
 | 模型仍在宿主 | 这是 MLX 的硬约束，不是本方案的取舍 |
 | 模型名必须与 worker 一致 | worker 会校验请求里的 `model` 是否等于自己加载的那个；改 `settings.json` 的模型后要同步重启模型层 |
