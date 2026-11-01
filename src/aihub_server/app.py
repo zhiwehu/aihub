@@ -169,7 +169,7 @@ class Hub:
         self.factory = pipeline_factory
         self.maintenance = None
         self.mqtt = None
-        self.planner = RexPlanner()
+        self.planner = RexPlanner(self.root)
         self.extensions = ExtensionManager(self.root)
         self.operations=Operations(self.root,publish=self.operation_changed)
         self.workflows = WorkflowManager(self.root,self.config.get,self.extensions,on_change=self.workflow_changed)
