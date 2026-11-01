@@ -1,5 +1,7 @@
+import json
 import tempfile
 import unittest
+from pathlib import Path
 from aiohttp.test_utils import TestClient, TestServer
 from aihub_server.app import create_app, create_device_app, HUB
 from tests.test_sessions import Pipeline
@@ -42,3 +44,26 @@ class DeviceListenerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status,200)
         value=await r.json()
         self.assertEqual(value['websocket']['url'],str(self.device.make_url('/xiaozhi/v1/')).replace('http://','ws://'))
+
+    async def test_device_bind_may_cover_all_interfaces_and_keeps_the_advertised_host(self):
+        # Container layout: listen on 0.0.0.0 inside the container while devices
+        # are still told to dial the LAN address saved in connections.json.
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root)/'connections.json').write_text(json.dumps(dict(
+                mqtt_enabled=False, device_enabled=True,
+                device_host='192.168.2.122', device_port=0)))
+            client=TestClient(TestServer(create_app(root, pipeline_factory=lambda c,h,l:Pipeline(),
+                                                    device_bind='0.0.0.0')))
+            await client.start_server()
+            try:
+                connections=client.app[HUB].connections
+                self.assertTrue(connections.device_ready)
+                self.assertEqual(connections.bind_host,'0.0.0.0')
+                self.assertEqual(connections.device_host,'192.168.2.122')
+            finally:
+                await client.close()
+
+    async def test_a_public_device_bind_address_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(ValueError):
+                create_app(root, pipeline_factory=lambda c,h,l:Pipeline(), device_bind='8.8.8.8')

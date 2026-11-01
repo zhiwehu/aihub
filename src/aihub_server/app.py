@@ -765,14 +765,18 @@ def create_device_app(hub):
     return app
 
 
-def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False):
+def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False, device_bind=None):
     if device_host:
         address = ipaddress.ip_address(device_host)
         if not address.is_private or address.is_unspecified or address.is_multicast:
             raise ValueError('Device listener must bind a specific private interface address')
+    if device_bind:
+        address = ipaddress.ip_address(device_bind)
+        if address.is_multicast or not (address.is_unspecified or address.is_private):
+            raise ValueError('Device listener bind address must be unspecified or a private interface address')
     app = web.Application(middlewares=[guard], client_max_size=65536)
     hub = app[HUB] = Hub(root, pipeline_factory, skills_enabled=skills_enabled)
-    hub.connections = Connections(hub, mqtt_config, device_host, device_port)
+    hub.connections = Connections(hub, mqtt_config, device_host, device_port, bind_host=device_bind)
     async def life(app):
         await hub.start()
         try:

@@ -29,14 +29,17 @@ def atomic_json(path, value):
 
 
 class Connections:
-    def __init__(self, hub, mqtt_path=None, device_host=None, device_port=8766):
+    def __init__(self, hub, mqtt_path=None, device_host=None, device_port=8766, bind_host=None):
         self.hub = hub
         self.path = Path(mqtt_path) if mqtt_path else hub.root/'mqtt/config.json'
+        # device_host is what devices are told to dial; bind_host is what this
+        # process listens on. They differ when a container forwards the port.
         self.device_host, self.device_port = device_host, device_port
+        self.bind_host = bind_host
         self.device_ready = False
         self.device_runner = None
         self.device_error = None
-        self.device_enabled = bool(device_host)
+        self.device_enabled = bool(device_host or bind_host)
         self.lock = asyncio.Lock()
         self.error = None
         self.preference = hub.root/'connections.json'
@@ -83,12 +86,17 @@ class Connections:
                 self.device_enabled = False; self.device_error = None; self.persist(); return
             if self.device_runner: return
             try:
-                address = ipaddress.IPv4Address(self.device_host or '')
-                if not address.is_private or address.is_unspecified or address.is_multicast:
+                bind = self.bind_host or self.device_host
+                address = ipaddress.IPv4Address(bind or '')
+                if not address.is_private or address.is_multicast:
+                    raise ValueError('invalid_device_address')
+                # 0.0.0.0 is only allowed as an explicit listen address (container
+                # port forwarding); an advertised host must stay concrete.
+                if address.is_unspecified and not self.bind_host:
                     raise ValueError('invalid_device_address')
                 runner = web.AppRunner(create_device_app(self.hub),access_log=None,shutdown_timeout=3)
                 await runner.setup()
-                try: await web.TCPSite(runner,self.device_host,self.device_port).start()
+                try: await web.TCPSite(runner,bind,self.device_port).start()
                 except BaseException:
                     await runner.cleanup(); raise
                 self.device_runner = runner
