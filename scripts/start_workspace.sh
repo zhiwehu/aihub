@@ -198,6 +198,7 @@ esac
 
 # ---- start ---------------------------------------------------------------
 export AIHUB_WEB_ROOT="$WEB"
+export AIHUB_FIRMWARE_ROOT="$ROOT/aihub-firmware/flash"
 export AIHUB_MODELS_URL="http://127.0.0.1:$MODELS_PORT"
 export AIHUB_MODELS_TOKEN="$TOKEN"
 

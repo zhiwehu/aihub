@@ -62,6 +62,11 @@ export AIHUB_MODELS_TOKEN=<serve 启动时打印的令牌>
 **网页客户端不在这个包里。** 服务端从 `AIHUB_WEB_ROOT`（默认 `<data>/web`）提供构建产物；
 没有构建时首页显示一行说明。
 
+**USB 刷机助手也不在这个包里。** 它属于 `aihub-firmware`，服务端只把那个目录挂到
+`/firmware`（`AIHUB_FIRMWARE_ROOT`，工作区默认 `aihub-firmware/flash`），控制台选中喵伴时
+按需 `import('/firmware/echoear-installer.js')`。目录不存在时 `/firmware/*` 返回 404，
+控制台退回文字向导，其余页面不受影响。服务端从不接触 USB。
+
 ## 快速开始
 
 本仓库是运行入口。六个仓库是平级目录，虚拟环境放在它们的父目录里：

@@ -77,6 +77,20 @@ def web_root(data_root):
     if configured:
         return Path(configured).expanduser()
     return Path(data_root) / 'web'
+
+
+def firmware_root(data_root):
+    """Where the browser flashing assistant lives.
+
+    USB programming (Web Serial, NVS, backups) belongs to ``aihub-firmware``, and
+    the console loads its module instead of vendoring a copy. The server only
+    publishes that directory; it never touches the device. ``AIHUB_FIRMWARE_ROOT``
+    wins, then ``<data>/flash``.
+    """
+    configured = env_value('FIRMWARE_ROOT')
+    if configured:
+        return Path(configured).expanduser()
+    return Path(data_root) / 'flash'
 PLAYBACK_READY_TIMEOUT = 2
 
 
@@ -870,4 +884,10 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
     app.router.add_get('/', index)
     if static_root.is_dir():
         app.router.add_static('/static', static_root, show_index=False)
+    # The console imports the USB onboarding module from this path. Driven by
+    # aihub-firmware, so an unset or missing directory only costs the flashing
+    # panel, never the console itself.
+    flasher_root = firmware_root(root)
+    if flasher_root.is_dir():
+        app.router.add_static('/firmware', flasher_root, show_index=False)
     return app
