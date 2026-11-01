@@ -1,0 +1,46 @@
+name: aihub
+
+services:
+  aihub-server:
+    build:
+      # prepare-context.sh assembles this: sibling packages + web + VAD model.
+      context: context
+    image: aihub-server:local
+    container_name: aihub-server
+    # Bearer tokens for the native model workers (see model-host.sh).
+    env_file:
+      - env/models.env
+    environment:
+      AIHUB_WEB_ROOT: /app/web
+      VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
+    ports:
+      # Console.
+      - "${AIHUB_CONTAINER_PORT:-8765}:8765"
+      # 喵伴 device ingress. The server binds 0.0.0.0 inside the container
+      # (--device-bind) and keeps advertising the LAN address from
+      # data/connections.json, so devices see a reachable URL.
+      - "8766:8766"
+    volumes:
+      # Same data directory the native model tier reads: recordings, history,
+      # tokens and settings.json are shared.
+      - "${AIHUB_DATA:-../../../data}:/data"
+    extra_hosts:
+      # Docker Desktop resolves this already; host-gateway keeps it working if
+      # the image is ever run under a plain Linux engine.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    command:
+      - "--data"
+      - "/data"
+      - "--port"
+      - "8765"
+      - "--host"
+      - "0.0.0.0"
+      # Listen on every container interface; the advertised address comes from
+      # data/connections.json (e.g. 192.168.2.122) written by the console or by
+      # native mode. OTA answers derive the ws:// URL from the Host header, so a
+      # device that reaches us on <lan-ip>:8766 is told <lan-ip>:8766.
+      - "--device-bind"
+      - "0.0.0.0"
+      - "--device-port"
+      - "8766"
