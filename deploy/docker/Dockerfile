@@ -19,6 +19,10 @@ WORKDIR /app
 # three together keeps pip from trying to resolve aihub-common/aihub-tools
 # from the index.
 COPY pkgs/ /app/pkgs/
+# No [rex] extra on purpose: the local planner loads the vendored runtime in
+# <data>/rex-runtime, which is a macOS pip tree (tokenizers.abi3.so is Mach-O).
+# In a Linux container it fails with "invalid ELF header", so the planner runs as
+# planner=llm against the model tier over HTTP instead.
 RUN pip install --index-url "$PIP_INDEX_URL" \
         /app/pkgs/aihub-common /app/pkgs/aihub-tools /app/pkgs/aihub-server \
  && rm -rf /app/pkgs
