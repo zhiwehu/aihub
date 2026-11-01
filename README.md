@@ -11,6 +11,7 @@ AIHub 的网页控制台与语音聊天客户端：模型配置、连接实验�
 public/
 ├── index.html            单页外壳
 ├── app.js                主逻辑（约 92 KB，尚未拆分模块）
+├── api-response.mjs      响应解码：非 JSON 的失败也要说清 HTTP 状态
 ├── connections.js        客户端接入向导、设备与固件状态
 ├── capture.js            浏览器麦克风采集
 ├── mcp-*.js/.mjs         MCP 工具、扩展、设置、调用记录
@@ -22,8 +23,14 @@ public/
 ├── operations-ui.js      后台任务
 └── style.css
 tests/
-└── test_mcp_calls.mjs    调用记录合并的单元测试
+├── test_mcp_calls.mjs    调用记录合并的单元测试
+└── test_api_response.mjs 响应解码与非 JSON 错误提示
 ```
+
+服务端出错时不一定回 JSON：`aiohttp` 的未捕获异常是 `text/plain` 的
+`500 Internal Server Error`，直接 `response.json()` 会得到
+`Unexpected non-whitespace character after JSON at position 4`（`500 ` 被当成数字）。
+所以所有控制台请求都走 `api-response.mjs`，失败时按 HTTP 状态给出可读提示。
 
 ## 怎么被服务
 

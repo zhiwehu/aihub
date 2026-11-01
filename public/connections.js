@@ -1,3 +1,5 @@
+import {failureMessage, readBody} from './api-response.mjs?v=20261101a';
+
 const $ = id => document.getElementById(id);
 const labels = {running:'运行中',connecting:'连接 Broker 中',stopped:'未启动',failed:'启动失败',
   websocket_v1:'WebSocket v1',xiaozhi_websocket:'小智 WebSocket',mqtt_udp:'MQTT + UDP',
@@ -6,7 +8,8 @@ const errors = {mqtt_not_configured:'尚未初始化 MQTT 凭据。请先按部�
   mqtt_invalid_config:'MQTT 私有配置无效，请检查文件权限和配置内容。',mqtt_must_stop:'请先停止 MQTT 网关，再保存配置。',
   udp_address_unavailable:'UDP 监听地址不在当前电脑上，请选择下方列出的局域网地址。',
   udp_port_in_use:'UDP 端口被占用，请更换端口或检查占用程序。',broker_unavailable:'无法连接 Broker，正在自动重试。请核对地址、端口、服务和凭据。',
-  mqtt_dependency_missing:'缺少 MQTT 运行依赖，请安装 requirements-mqtt.txt。',device_must_stop:'请先停止设备监听，再保存配置。',
+  mqtt_dependency_missing:'这台服务器的 Python 环境没装 MQTT 可选依赖（aiomqtt / cryptography），装上后重启服务端即可：uv pip install -e "./aihub-server[mqtt]"。网页客户端不受影响。',
+  device_must_stop:'请先停止设备监听，再保存配置。',
   device_address_unavailable:'设备监听地址或端口不可用，请核对当前网卡及端口。',invalid_device_address:'请选择有效的局域网 IPv4 地址。'};
 let data, selected='web', loading=false, busy=false;
 const dirty = {mqtt:false,websocket:false};
@@ -15,8 +18,9 @@ function info(text, bad=false) { $('connections-notice').textContent=text; $('co
 async function request(path='', options={}) {
   const response=await fetch('/api/connections'+path,options);
   if(response.status===401)throw new Error('请先使用管理员令牌登录。');
-  const value=await response.json();
-  if(!response.ok) throw new Error(errors[value.error?.code] || value.error?.message || '请求失败，请检查管理员登录状态。');
+  const {value, parsed}=await readBody(response);
+  if(!response.ok) throw new Error(errors[value?.error?.code] || value?.error?.message || failureMessage(response));
+  if(!parsed) throw new Error(failureMessage(response));
   return value;
 }
 function link(text, href) { const a=el('a',text,'secondary connection-link'); a.href=href; if(href.startsWith('https:')) {a.target='_blank';a.rel='noopener noreferrer';}return a; }
@@ -107,7 +111,7 @@ function drawSettings() {
     ws.device_ready?'硬件设备入口：ws://'+ws.device_host+':'+ws.device_port+'/xiaozhi/v1/':'选择本机局域网地址后启动设备专用监听。';
   if(!dirty.websocket) {$('ws-device-host').value=ws.device_host||'';$('ws-device-port').value=ws.device_port;}
   for(const n of $('ws-connection-form').elements)n.disabled=busy||ws.device_ready;
-  $('mqtt-connection-state').textContent=mqtt.configured?(labels[mqtt.state]||mqtt.state):'尚未配置';
+  $('mqtt-connection-state').textContent=mqtt.dependency_missing?'依赖未安装':mqtt.configured?(labels[mqtt.state]||mqtt.state):'尚未配置';
   $('mqtt-connection-warning').textContent=mqtt.error?(errors[mqtt.error]||mqtt.error):
     !mqtt.configured?'首次接入需初始化 Broker 账号、设备账号和 ACL，按部署说明生成私有配置。':
     mqtt.address_available===false?'配置的 UDP 地址不属于当前电脑。先停止网关，改为当前局域网地址后再启动。':

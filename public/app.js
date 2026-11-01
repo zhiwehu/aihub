@@ -1,4 +1,5 @@
 import {createMcpUi} from './mcp-ui.js';
+import {failureMessage, readBody} from './api-response.mjs?v=20261101a';
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -87,15 +88,11 @@ async function api(path, options = {}) {
     $("login").hidden = false;
     throw new Error("请使用管理员令牌登录");
   }
-  if (!response.ok) {
-    let message = "请求失败（" + response.status + "）";
-    try {
-      const data = await response.json();
-      message = data.error?.message || message;
-    } catch {}
-    throw new Error(message);
-  }
-  return response.json();
+  const {value, parsed} = await readBody(response);
+  if (!response.ok)
+    throw new Error((parsed && (value.error?.message || value.error?.code)) || failureMessage(response));
+  if (!parsed) throw new Error(failureMessage(response));
+  return value;
 }
 const mcp = createMcpUi({api,node,notice,onConfig:()=>{}});
 function view(name) {
