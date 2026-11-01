@@ -130,8 +130,10 @@ def create_worker_app(kind, model, service_id, token, engine=None):
     app.cleanup_ctx.append(lifetime)
 
     async def health(request):
+        from .process_stats import stats
         return web.json_response(dict(service_id=service_id, model=model, ready=ready,
-            error=error, active=active, sample_rate=RATE if kind == 'tts' else None))
+            error=error, active=active, sample_rate=RATE if kind == 'tts' else None,
+            **stats()))
 
     async def chat(request):
         data = await request.json()

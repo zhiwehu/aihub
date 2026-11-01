@@ -99,7 +99,9 @@ def create_tts_app(voice=None):
     app.cleanup_ctx.append(lifetime)
 
     async def health(request):
-        return web.json_response(dict(ready=ready,model=MODEL,sample_rate=RATE,voices=VOICES,active=active))
+        from .process_stats import stats
+        return web.json_response(dict(ready=ready,model=MODEL,sample_rate=RATE,voices=VOICES,
+            active=active,**stats()))
 
     async def speech(request):
         nonlocal active

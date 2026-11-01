@@ -55,10 +55,14 @@ async def _json(request):
     return body
 
 
-def create_service_app(jobs, minutes, token):
+def create_service_app(jobs, minutes, token, allow_remote=False):
     @web.middleware
     async def guard(request, handler):
-        if not is_loopback(request):
+        # A container reaches this service through the host's loopback via
+        # host.docker.internal, so the peer is the bridge gateway, not loopback.
+        # allow_remote only relaxes the address check; the bearer token still
+        # gates every request and the listener stays bound to 127.0.0.1.
+        if not allow_remote and not is_loopback(request):
             raise web.HTTPForbidden()
         origin = request.headers.get('Origin')
         if origin and origin != f'{request.scheme}://{request.host}':
@@ -121,10 +125,12 @@ def create_service_app(jobs, minutes, token):
         setup_minutes(app, minutes)
 
     async def health(request):
+        from .process_stats import stats
         return web.json_response({
             'ready': True,
             'minutes': minutes is not None,
             'active_jobs': len(jobs.active()),
+            **stats(),
         })
 
     app.router.add_get('/health', health)

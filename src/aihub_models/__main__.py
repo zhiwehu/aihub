@@ -59,7 +59,8 @@ def _serve(args):
         transcribe = make_transcribe(asr_model, args.log_level)
     jobs, minutes = build(data_root, recordings_root, transcribe=transcribe,
                           minutes_model=False if args.no_minutes else args.minutes_model)
-    app = create_service_app(jobs, minutes, token)
+    allow_remote = env_value('MODELS_ALLOW_REMOTE') in ('1', 'true', 'yes')
+    app = create_service_app(jobs, minutes, token, allow_remote=allow_remote)
     print(f'aihub-models service: http://127.0.0.1:{args.port} (recordings {recordings_root})')
     if args.print_token:
         print(token)

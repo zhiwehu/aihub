@@ -13,6 +13,7 @@ dependencies = [
     "aihub-common>=0.2",
     "aiohttp>=3.14.3,<4",
     "numpy>=2,<3",
+    "psutil>=6,<8",
 ]
 
 [project.optional-dependencies]

@@ -39,6 +39,26 @@ class ServiceTests(IsolatedAsyncioTestCase):
         body = await response.json()
         self.assertTrue(body['ready'])
         self.assertTrue(body['minutes'])
+        # The console adds this up across the container boundary, so every
+        # service reports its own footprint.
+        self.assertEqual(body['pid'], __import__('os').getpid())
+        self.assertGreater(body['rss'], 0)
+        self.assertGreaterEqual(body['cpu_percent'], 0)
+        self.assertGreater(body['threads'], 0)
+
+    async def test_remote_peers_need_both_the_flag_and_the_token(self):
+        # A container reaches this service through the host loopback, so the
+        # address check alone would lock denoise/diarize/minutes out.
+        with mock.patch('aihub_models.service.is_loopback', return_value=False):
+            self.assertEqual((await self.client.get('/health', headers=self.auth())).status, 403)
+            remote = create_service_app(self.jobs, self.minutes, TOKEN, allow_remote=True)
+            client = TestClient(TestServer(remote))
+            await client.start_server()
+            try:
+                self.assertEqual((await client.get('/health', headers=self.auth())).status, 200)
+                self.assertEqual((await client.get('/health')).status, 401)
+            finally:
+                await client.close()
 
     async def test_a_wrong_token_is_rejected(self):
         response = await self.client.get('/health', headers={'Authorization': 'Bearer nope'})
