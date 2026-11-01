@@ -28,7 +28,7 @@ class Engine:
         self.states={};self.active_state='everyday'
         if self.actions:
             # Reuse one frozen base; switch only the small LoRA deltas for legacy slots.
-            core=root/'data/adapters/rex-mcp-router-r16-slots-v2'
+            core=root/'adapters/rex-mcp-router-r16-slots-v2'
             core_config=json.loads((core/'adapter_config.json').read_text())
             if any(core_config[key]!=config[key] for key in ('rank','alpha','targets')):raise ValueError('Core slot adapter mismatch')
             self.states={'everyday':state,'core':load_file(str(core/'adapter_model.safetensors'))}
@@ -81,17 +81,32 @@ class Engine:
         return result
 
 
+DEFAULT_ADAPTER='adapters/rex-mcp-router-r16-slots-v2'
+
+
+def active_adapter(root):
+    """Adapter directory selected for this data root, bounded to ``<data>/adapters``.
+
+    The marker file is written by the evaluation script with the path the operator
+    typed from the workspace ("data/adapters/rex-everyday-v5"), so a leading
+    ``data/`` is dropped before resolving against the data root.
+    """
+    root=Path(root)
+    selected=DEFAULT_ADAPTER
+    active=root/'rex-planner-active.json'
+    if active.exists():
+        chosen=json.loads(active.read_text()).get('adapter') or selected
+        parts=Path(chosen).parts
+        selected=str(Path(*parts[1:])) if parts[:1]==('data',) else chosen
+    resolved=(root/selected).resolve()
+    if not resolved.is_relative_to((root/'adapters').resolve()):raise ValueError('Invalid active adapter')
+    return str(resolved)
+
+
 def main():
     parser=argparse.ArgumentParser()
     root=data_root()
-    active=root/'rex-planner-active.json'
-    adapter='adapters/rex-mcp-router-r16-slots-v2'
-    if active.exists():
-        selected=json.loads(active.read_text()).get('adapter','')
-        resolved=(root/selected).resolve()
-        if not resolved.is_relative_to((root/'adapters').resolve()):raise ValueError('Invalid active adapter')
-        adapter=str(resolved)
-    parser.add_argument('--adapter',default=str(root/adapter))
+    parser.add_argument('--adapter',default=active_adapter(root))
     args=parser.parse_args()
     engine=Engine(args.adapter)
     print(json.dumps({'type':'ready','joint_slots':True}),flush=True)
