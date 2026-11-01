@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from aiohttp.test_utils import TestClient, TestServer
 from aihub_server.app import create_app
-from aihub_server.system import deployment, snapshot
+from aihub_server.system import _health_url, deployment, model_tier, snapshot
 
 
 class DeploymentTests(unittest.TestCase):
@@ -54,3 +54,23 @@ class SystemApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('percent', value['memory'])
         self.assertIn('rx_rate', value['network'])
         self.assertIn('rss', value['process'])
+        self.assertIn('model_tier', value)
+        self.assertIn('app_bytes', value['disk'])
+
+    async def test_health_url_strips_the_openai_suffix(self):
+        self.assertEqual(_health_url('http://host:8781/v1'), 'http://host:8781/health')
+        self.assertEqual(_health_url('http://host:8781/v1/'), 'http://host:8781/health')
+        self.assertEqual(_health_url('http://host:8790'), 'http://host:8790/health')
+
+    async def test_model_tier_survives_unreachable_services(self):
+        config = {'asr': {'provider': 'http', 'url': 'http://127.0.0.1:1/v1',
+                          'key_env': 'AIHUB_TEST_ASR_KEY'},
+                  'llm': {'provider': 'http', 'url': 'http://127.0.0.1:2/v1',
+                          'key_env': 'AIHUB_TEST_LLM_KEY'},
+                  'tts': {'provider': 'http', 'url': 'http://127.0.0.1:3/v1',
+                          'key_env': 'AIHUB_TEST_TTS_KEY'}}
+        value = await model_tier(config, None, timeout=.5)
+        self.assertEqual(value['total'], 3)
+        self.assertEqual(value['reachable'], 0)
+        self.assertEqual(value['rss'], 0)
+        self.assertEqual(value['processes'], [])

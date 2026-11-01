@@ -111,7 +111,10 @@ do_start() {
   start_one tts "$TTS_PORT" env AIHUB_WORKER_TOKEN="$(token_of VOICE_TTS_KEY)" \
     "$PY" -m aihub_models worker --kind tts --model "$tts_model" \
     --service-id "$(gen_id)" --port "$TTS_PORT"
-  start_one media "$MEDIA_PORT" \
+  # The container reaches this service via host.docker.internal, so its peer is
+  # the bridge gateway; AIHUB_MODELS_ALLOW_REMOTE lifts the loopback-only check
+  # (the bearer token still gates every request).
+  start_one media "$MEDIA_PORT" env AIHUB_MODELS_ALLOW_REMOTE=1 \
     "$PY" -m aihub_models serve --data "$DATA" --port "$MEDIA_PORT" \
     --token "$(token_of AIHUB_MODELS_TOKEN)"
 

@@ -534,8 +534,11 @@ async def device_gateway(request, ws):
 
 
 async def system_api(request):
-    from .system import snapshot
-    return web.json_response(snapshot(request.app[HUB].root))
+    from .system import model_tier, snapshot
+    hub = request.app[HUB]
+    value = snapshot(hub.root)
+    value['model_tier'] = await model_tier(hub.config.get(), hub.services)
+    return web.json_response(value)
 
 
 async def api(request):
