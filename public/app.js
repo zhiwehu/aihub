@@ -2132,6 +2132,11 @@ function clearPlayback() {
   nextAudioTime = context?.currentTime || 0;
   currentTurn = null;
 }
+document.addEventListener("click", () => {
+  // Browsers suspend an AudioContext that was not resumed inside a gesture.
+  if (context && context.state === "suspended")
+    context.resume().catch(() => {});
+});
 async function audioContext() {
   if (!context || context.state === "closed") {
     // Let Chrome negotiate the AirPods hardware rate; capture.js converts to 16 kHz.
@@ -2139,6 +2144,8 @@ async function audioContext() {
     await context.audioWorklet.addModule("/static/capture.js");
   }
   await context.resume();
+  if (context.state !== "running")
+    notice("浏览器暂停了音频输出，点一下页面继续播放。", true);
   return context;
 }
 let microphonePackets = 0, microphoneFrames = 0, microphonePeak = 0;
