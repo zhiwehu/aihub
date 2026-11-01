@@ -35,19 +35,31 @@ function drawCatalog() {
     card.append(choose);target.append(card);
   }
 }
+// USB 编程属于 aihub-firmware：服务端把它的 flash/ 目录挂在 /firmware 下，控制台
+// 只在选中喵伴时按需加载那个模块。模块加载并绑定好面板后才注册 window.AIHubFlasher
+// （aihub-firmware 的契约），控制台据此决定显示刷机面板还是退回文字向导。
+let flasher='idle'; // idle | loading | ready | missing
+function loadFlasher() {
+  if(flasher!=='idle')return;
+  flasher='loading';
+  import('/firmware/echoear-installer.js')
+    .then(()=>{flasher=window.AIHubFlasher?'ready':'missing';})
+    .catch(()=>{flasher='missing';})
+    .then(()=>{if(selected==='echoear-s3')drawGuide();});
+}
 function drawGuide() {
   const client=data.clients.find(c=>c.id===selected) || data.clients[0];
-  // The USB flasher is a separate module owned by aihub-firmware. When it is
-  // embedded it registers window.AIHubFlasher and listens for aihub:firmware;
-  // without it the console still shows the guide and the connection settings.
+  const echoear=client.id==='echoear-s3';
+  if(echoear&&flasher==='idle')loadFlasher();
   const installer=$('echoear-installer'),advanced=$('connection-advanced');
+  const usbPanel=!!installer&&echoear&&flasher==='ready';
   if(installer){
-    installer.hidden=client.id!=='echoear-s3';
+    installer.hidden=!usbPanel;
     const usbAdvanced=installer.querySelector('.echoear-advanced');
-    if(client.id==='echoear-s3'){if(usbAdvanced&&advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
+    if(usbPanel){if(usbAdvanced&&advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
     else if(advanced.previousElementSibling!==installer)installer.after(advanced);
   }
-  $('client-guide-title').closest('article').hidden=client.id==='echoear-s3';
+  $('client-guide-title').closest('article').hidden=usbPanel;
   window.dispatchEvent(new CustomEvent('aihub:firmware',{detail:client.firmware}));
   $('client-guide-title').textContent='2. '+(client.id==='web'?'打开网页，开始使用':'准备设备并连接');
   $('client-guide-status').textContent=client.id==='web'?'无需安装':'请先确认设备型号';
@@ -58,6 +70,7 @@ function drawGuide() {
   const actions=$('client-install-actions');actions.replaceChildren();
   if(client.id==='web') {const start=link('打开网页，开始聊天','#lab');start.classList.add('primary');actions.append(start);}
   else {
+    if(echoear&&flasher==='missing')actions.append(el('p','USB 连接与配网助手没有加载：服务端在 /firmware 下没找到 aihub-firmware 的 flash 目录。可以先下载连接配置手动配网，或让管理员设置 AIHUB_FIRMWARE_ROOT 后重启服务端。','hint'));
     if(client.firmware) {
       if(client.firmware.install?.validated!==false)actions.append(link('下载应用固件 '+client.firmware.version,client.firmware.download));
       else actions.append(el('p','新版应用已构建，正在等待实机验收。通过验收后，这里会开放安装。','hint'));
@@ -76,7 +89,7 @@ function drawGuide() {
       }
       actions.append(el('p','下载的连接配置包含设备访问凭据，请仅交给对应设备使用。按固件说明填入地址与令牌，下载不会自动改写设备。','hint'));
     } else {
-      actions.append(el('p','下方 USB 向导会自动准备设备连接服务，无需手动填写地址。','hint'));
+      actions.append(el('p',flasher==='missing'?'设备监听还没启动，开关在下方高级连接设置里；USB 配网助手不可用时也可以下载连接配置手动填写。':'下方 USB 向导会自动准备设备连接服务，无需手动填写地址。','hint'));
       const setup=el('button','打开高级连接设置','secondary');setup.type='button';setup.onclick=()=>{$('connection-advanced').open=true;$('connection-advanced').scrollIntoView({behavior:'smooth',block:'start'});};actions.append(setup);
     }
   }
