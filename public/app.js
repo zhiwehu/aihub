@@ -826,6 +826,48 @@ function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
   return (bytes / 1024 / 1024).toFixed(1) + " MB";
 }
+function formatStorage(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let index = 0;
+  let value = bytes;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return value.toFixed(index === 0 || value >= 10 ? 0 : 1) + " " + units[index];
+}
+function formatRate(bytes) {
+  return formatStorage(bytes) + "/s";
+}
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return days + " 天 " + hours + " 小时";
+  if (hours) return hours + " 小时 " + minutes + " 分";
+  return minutes + " 分钟";
+}
+async function refreshSystem() {
+  const s = await api("system");
+  const docker = s.deployment === "docker";
+  $("deploy-mode").textContent = docker ? "Docker" : "原生";
+  $("deploy-detail").textContent =
+    (docker ? "容器内视角" : "本机") + " · " + s.hostname +
+    " · 已运行 " + formatUptime(s.uptime_seconds);
+  $("cpu-usage").textContent = s.cpu.percent.toFixed(0) + "%";
+  $("cpu-detail").textContent =
+    s.cpu.cores + " 核 · 负载 " + s.cpu.load.join(" / ");
+  $("mem-usage").textContent = s.memory.percent.toFixed(0) + "%";
+  $("mem-detail").textContent =
+    formatStorage(s.memory.used) + " / " + formatStorage(s.memory.total);
+  $("disk-usage").textContent = s.disk.percent.toFixed(0) + "%";
+  $("disk-detail").textContent =
+    "数据 " + formatStorage(s.disk.data_bytes) + " · 剩余 " + formatStorage(s.disk.free);
+  $("net-usage").textContent = "↓" + formatRate(s.network.rx_rate);
+  $("net-detail").textContent =
+    "↑" + formatRate(s.network.tx_rate) + " · 进程 " + formatStorage(s.process.rss);
+}
 function recordingReason(reason) {
   return {
     web: "网页停止",
@@ -2551,3 +2593,7 @@ async function boot() {
   }
 }
 await boot();
+refreshSystem().catch(() => {});
+setInterval(() => {
+  if (document.visibilityState === "visible") refreshSystem().catch(() => {});
+}, 5000);

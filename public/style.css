@@ -372,6 +372,13 @@ p {
   font-size: 25px;
   letter-spacing: 0;
 }
+.metrics.system-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+.metrics.system-metrics strong {
+  font-size: 24px;
+  letter-spacing: 0;
+}
 .panel {
   background: var(--white);
   border: 1px solid var(--line);
