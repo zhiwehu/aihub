@@ -37,6 +37,9 @@ from aihub_tools.timer_reminders import TimerReminders
 
 HUB = web.AppKey('hub', object)
 DEVICE_ONLY = web.AppKey('device_only', bool)
+# Set only when the console port is published on loopback (container deployments):
+# every admin-API peer is then equivalent to the local user.
+LOCAL_CONSOLE = web.AppKey('local_console', bool)
 class Runtime:
     """Long-lived objects shared with the tool layer.
 
@@ -95,6 +98,8 @@ PLAYBACK_READY_TIMEOUT = 2
 
 
 def local_admin(request):
+    if request.app.get(LOCAL_CONSOLE):
+        return True
     try:
         address = ipaddress.ip_address(request.remote or '')
         host = urlsplit('//'+request.host).hostname
@@ -765,7 +770,7 @@ def create_device_app(hub):
     return app
 
 
-def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False, device_bind=None):
+def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False, device_bind=None, local_console=False):
     if device_host:
         address = ipaddress.ip_address(device_host)
         if not address.is_private or address.is_unspecified or address.is_multicast:
@@ -775,6 +780,11 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
         if address.is_multicast or not (address.is_unspecified or address.is_private):
             raise ValueError('Device listener bind address must be unspecified or a private interface address')
     app = web.Application(middlewares=[guard], client_max_size=65536)
+    if local_console:
+        # The operator asserts the console port is loopback-only; Docker's port
+        # forwarder makes every request look like it comes from the gateway, so
+        # the peer address can no longer be the test.
+        app[LOCAL_CONSOLE] = True
     hub = app[HUB] = Hub(root, pipeline_factory, skills_enabled=skills_enabled)
     hub.connections = Connections(hub, mqtt_config, device_host, device_port, bind_host=device_bind)
     async def life(app):

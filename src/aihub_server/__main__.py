@@ -12,6 +12,9 @@ def main():
     parser.add_argument('--device-host', help='Specific private IP for an authenticated device-only listener')
     parser.add_argument('--device-bind', help='Listen address for the device listener (default: --device-host); 0.0.0.0 when running behind a container port mapping')
     parser.add_argument('--device-port', type=int, default=8766)
+    parser.add_argument('--local-console', action='store_true',
+                        help='Trust every admin-API peer as local. Use only when the console port is bound to '
+                             'loopback (e.g. a container publishing 127.0.0.1:8765); otherwise the admin API is exposed')
     parser.add_argument('--mqtt-config', help='Private per-device MQTT/UDP config; disabled by default')
     parser.add_argument('--data', default=str(Path.cwd()/'data'),
                         help='Runtime data directory (default: ./data)')
@@ -19,7 +22,8 @@ def main():
     parser.add_argument('--print-admin-token', action='store_true')
     args = parser.parse_args()
     app = create_app(args.data, device_host=args.device_host, device_port=args.device_port,
-                     mqtt_config=args.mqtt_config, device_bind=args.device_bind)
+                     mqtt_config=args.mqtt_config, device_bind=args.device_bind,
+                     local_console=args.local_console)
     if args.print_device_token or args.print_admin_token:
         print(app[HUB].auth['device_token' if args.print_device_token else 'admin_token'])
         app[HUB].store.close()

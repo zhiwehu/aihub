@@ -312,3 +312,26 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(.005)
             self.assertFalse(self.app[HUB].sessions)
             self.assertFalse(self.app[HUB].cleanups)
+
+    async def test_local_console_flag_trusts_the_admin_api_without_a_token(self):
+        # Container deployment: the console port is published on 127.0.0.1, so the
+        # operator declares the whole app local instead of relying on the peer IP.
+        with tempfile.TemporaryDirectory() as root:
+            local = TestClient(TestServer(create_app(root, pipeline_factory=lambda c,h,l:Pipeline(),
+                                                      local_console=True)))
+            await local.start_server()
+            try:
+                self.assertEqual((await local.get('/api/config')).status, 200)
+                self.assertEqual((await local.get('/api/status')).status, 200)
+            finally:
+                await local.close()
+
+    async def test_local_console_is_off_by_default(self):
+        with tempfile.TemporaryDirectory() as root:
+            plain = TestClient(TestServer(create_app(root, pipeline_factory=lambda c,h,l:Pipeline())))
+            await plain.start_server()
+            try:
+                response = await plain.get('/api/config', headers={'Host': 'evil.example'})
+                self.assertEqual(response.status, 401)
+            finally:
+                await plain.close()

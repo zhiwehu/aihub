@@ -14,8 +14,10 @@ services:
       AIHUB_WEB_ROOT: /app/web
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
     ports:
-      # Console.
-      - "${AIHUB_CONTAINER_PORT:-8765}:8765"
+      # Console, loopback only — same reach as native mode (start.sh binds
+      # 127.0.0.1). The container still sees Docker's gateway as the peer, which
+      # is why --local-console is set below.
+      - "127.0.0.1:${AIHUB_CONTAINER_PORT:-8765}:8765"
       # 喵伴 device ingress. The server binds 0.0.0.0 inside the container
       # (--device-bind) and keeps advertising the LAN address from
       # data/connections.json, so devices see a reachable URL.
@@ -36,6 +38,9 @@ services:
       - "8765"
       - "--host"
       - "0.0.0.0"
+      # Console is published on 127.0.0.1 only, so treat admin-API callers as
+      # the local user instead of demanding a token on every request.
+      - "--local-console"
       # Listen on every container interface; the advertised address comes from
       # data/connections.json (e.g. 192.168.2.122) written by the console or by
       # native mode. OTA answers derive the ws:// URL from the Host header, so a
