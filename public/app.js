@@ -855,15 +855,27 @@ async function refreshSystem() {
   $("deploy-detail").textContent =
     (docker ? "容器内视角" : "本机") + " · " + s.hostname +
     " · 已运行 " + formatUptime(s.uptime_seconds);
-  $("cpu-usage").textContent = s.cpu.percent.toFixed(0) + "%";
+  const tier = s.model_tier || { processes: [], rss: 0, cpu_percent: 0 };
+  const serviceRss = (s.process.rss || 0) + (tier.rss || 0);
+  const serviceCpu = (s.process.cpu_percent || 0) + (tier.cpu_percent || 0);
+  $("cpu-usage").textContent = serviceCpu.toFixed(1) + "%";
   $("cpu-detail").textContent =
-    s.cpu.cores + " 核 · 负载 " + s.cpu.load.join(" / ");
-  $("mem-usage").textContent = s.memory.percent.toFixed(0) + "%";
+    "服务进程 · 系统 " + s.cpu.percent.toFixed(0) + "% · " + s.cpu.cores +
+    " 核 · 负载 " + s.cpu.load.join(" / ");
+  $("mem-usage").textContent = formatStorage(serviceRss);
   $("mem-detail").textContent =
-    formatStorage(s.memory.used) + " / " + formatStorage(s.memory.total);
-  $("disk-usage").textContent = s.disk.percent.toFixed(0) + "%";
+    "服务进程 · 系统 " + s.memory.percent.toFixed(0) + "%（" +
+    formatStorage(s.memory.used) + " / " + formatStorage(s.memory.total) + "）";
+  $("mem-breakdown").textContent = (tier.processes || []).length
+    ? tier.processes.map((p) => p.kind + " " + formatStorage(p.rss || 0)).join(" · ")
+    : "模型进程未上报（" + (tier.reachable || 0) + "/" + (tier.total || 0) + "）";
+  $("disk-usage").textContent = formatStorage(s.disk.data_bytes);
   $("disk-detail").textContent =
-    "数据 " + formatStorage(s.disk.data_bytes) + " · 剩余 " + formatStorage(s.disk.free);
+    "数据 · 程序 " + formatStorage(s.disk.app_bytes) + " · 合计 " +
+    formatStorage((s.disk.app_bytes || 0) + (s.disk.data_bytes || 0));
+  $("disk-extra").textContent =
+    "卷 " + s.disk.percent.toFixed(0) + "% 已用 · 剩余 " +
+    formatStorage(s.disk.free) + " · 录音 " + formatStorage(s.disk.recordings_bytes);
   $("net-usage").textContent = "↓" + formatRate(s.network.rx_rate);
   $("net-detail").textContent =
     "↑" + formatRate(s.network.tx_rate) + " · 进程 " + formatStorage(s.process.rss);

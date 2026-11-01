@@ -379,6 +379,10 @@ p {
   font-size: 24px;
   letter-spacing: 0;
 }
+.metrics.system-metrics small + small {
+  margin-top: 4px;
+  color: #8a978a;
+}
 .panel {
   background: var(--white);
   border: 1px solid var(--line);
