@@ -95,6 +95,40 @@ docker compose down             # 只停容器，模型层不受影响
 本机网卡，容器里没有局域网网卡，会返回「请先让这台电脑连接可供喵伴使用的局域网」。
 已经配好网、走 OTA 的设备不受影响。
 
+## 音乐 / 文件整理目录
+
+这两个工具吃的是本机目录，容器默认看不到。做法是**把宿主目录挂到容器内完全相同的
+绝对路径**，这样 `settings.json` 里存的路径两种模式都成立，不需要来回改配置：
+
+```yaml
+- "${AIHUB_MUSIC_DIR}:/${AIHUB_MUSIC_DIR}:ro"    # 只读：只列目录和播放
+- "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"       # 读写：整理要移动文件
+```
+
+这两个变量由 `configure.sh` 写进 `deploy/docker/.env`（compose 会自动读取）：
+
+1. 优先用环境变量 `AIHUB_MUSIC_DIR` / `AIHUB_FILES_DIR`；
+2. 否则取 `settings.json` 里的 `tools.music_directory` / `tools.file_directory`；
+3. 都没设时退回到 `data/docker-mounts/{music,files}`（自动创建的空目录），保证挂载不会失败。
+
+所以正常流程是：先在网页里把目录设成宿主路径（例如 `/Users/huzhiwei/Downloads`），再跑
+`./configure.sh`，然后 `docker compose up -d`。改了目录后重跑 `./configure.sh` 即可。
+
+容器内实测（`docker run` 挂载后直接调用工具）：
+
+```
+文件整理 scan : 448 个文件（图片 118 · 文档 190 · 视频 47 · 压缩包 28 · 音频 3 …）
+音乐 search   : Alan Walker 曲目正常列出
+只读挂载      : 往音乐目录写文件被拒绝
+```
+
+注意：
+
+- 文件整理目录是**读写**挂载，容器因此能移动你 `Downloads` 里的文件——这本来就是它的
+  工作，但意味着这个容器对那个目录有写权限。
+- 音乐目录是只读挂载，播放只是读取文件。
+- 目录不在 Docker Desktop 的文件共享白名单里会挂载失败；`/Users` 默认是共享的。
+
 ## 关于登录（默认不需要）
 
 原生模式控制台是「本机免登录」：`local_admin()` 要求对端是 loopback。容器化后请求从

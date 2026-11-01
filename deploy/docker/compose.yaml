@@ -26,6 +26,12 @@ services:
       # Same data directory the native model tier reads: recordings, history,
       # tokens and settings.json are shared.
       - "${AIHUB_DATA:-../../../data}:/data"
+      # Music and file-organiser folders are bind-mounted at the *same absolute
+      # path* inside the container, so the host paths saved in settings.json keep
+      # working in both deployment modes. configure.sh derives these from the
+      # live config and writes them to .env; export them to override.
+      - "${AIHUB_MUSIC_DIR}:/${AIHUB_MUSIC_DIR}:ro"
+      - "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"
     extra_hosts:
       # Docker Desktop resolves this already; host-gateway keeps it working if
       # the image is ever run under a plain Linux engine.

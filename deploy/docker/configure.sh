@@ -41,11 +41,12 @@ else
   say "已备份原始配置 → $BACKUP"
 fi
 
-"$PY" - "$SETTINGS" "$ASR_PORT" "$LLM_PORT" "$TTS_PORT" <<'PY'
-import json, sys, tempfile, os
+"$PY" - "$SETTINGS" "$ASR_PORT" "$LLM_PORT" "$TTS_PORT" "$HERE/.env" "$DATA/docker-mounts" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
 from aihub_server.config import validate
 
-path, asr_port, llm_port, tts_port = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+path, asr_port, llm_port, tts_port, env_path, mounts_root = sys.argv[1:7]
 # settings.json stores the config document itself (no wrapper key).
 config = json.load(open(path))
 
@@ -57,6 +58,29 @@ config['tts'].update(provider='http', url=f'http://{host}:{tts_port}/v1',
 # The Rex planner loads <data>/rex-runtime, a macOS pip tree (Mach-O .so files),
 # so it cannot start in the Linux container. The HTTP-backed LLM planner can.
 config['tools'] = {**config['tools'], 'planner': 'llm'}
+
+# Bind-mount the music and file folders at their own host paths, so the paths
+# saved in settings.json stay valid in both deployment modes. compose reads these
+# two variables from .env for interpolation; missing folders fall back to the data
+# directory so the mounts never fail.
+def host_dir(value, name):
+    # AIHUB_MUSIC_DIR / AIHUB_FILES_DIR win over the console setting, for people
+    # who would rather keep the paths out of settings.json.
+    raw = (os.environ.get('AIHUB_' + name.upper() + '_DIR') or value or '').strip()
+    if raw:
+        candidate = Path(raw).expanduser()
+        if candidate.is_dir():
+            return str(candidate)
+    fallback = Path(mounts_root) / name
+    fallback.mkdir(parents=True, exist_ok=True)
+    return str(fallback)
+
+music_dir = host_dir(config['tools'].get('music_directory'), 'music')
+files_dir = host_dir(config['tools'].get('file_directory'), 'files')
+Path(env_path).write_text(f'AIHUB_MUSIC_DIR={music_dir}\nAIHUB_FILES_DIR={files_dir}\n')
+print('挂载目录:')
+print(f'  音乐 {music_dir} (只读)')
+print(f'  文件 {files_dir} (读写)')
 
 value = validate(config)
 fd, name = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.settings-')
