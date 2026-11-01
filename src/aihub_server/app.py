@@ -533,6 +533,11 @@ async def device_gateway(request, ws):
     return ws
 
 
+async def system_api(request):
+    from .system import snapshot
+    return web.json_response(snapshot(request.app[HUB].root))
+
+
 async def api(request):
     hub, name = request.app[HUB], request.match_info.get('name', 'config' if request.match_info.get('scope') else request.path.rsplit('/', 1)[-1])
     if name == 'mcp':
@@ -877,6 +882,7 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
     app.router.add_delete('/api/recordings/{identity}/minutes/{job_id}', minutes_api)
     app.router.add_get('/api/recordings/{identity}/minutes/{job_id}/export', minutes_api)
     app.router.add_post('/api/services/{kind}/{action}', service_action)
+    app.router.add_get('/api/system', system_api)
     app.router.add_get('/api/config/{scope:models|tools}', api)
     app.router.add_put('/api/config/{scope:models|tools}', api)
     app.router.add_get('/api/{name}', api)
