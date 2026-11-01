@@ -60,6 +60,24 @@ class ConnectionTests(unittest.IsolatedAsyncioTestCase):
         r = await self.client.post('/api/connections/mqtt/start',headers={'Origin':'https://foreign.invalid'})
         self.assertEqual(r.status,403)
 
+    async def test_missing_optional_mqtt_extra_still_renders_the_client_page(self):
+        # Without the [mqtt] extra the transport modules cannot import. The
+        # console asks for /api/connections on page load, so a 500 there blanks
+        # the whole 客户端接入 page even though the web client never needs MQTT.
+        import sys
+        from unittest.mock import patch
+        with patch.dict(sys.modules,{'aihub_server.mqtt_service':None}):
+            r = await self.client.get('/api/connections')
+            self.assertEqual(r.status,200)
+            data = await r.json()
+            self.assertEqual(data['mqtt']['error'],'mqtt_dependency_missing')
+            self.assertTrue(data['mqtt']['dependency_missing'])
+            self.assertFalse(data['mqtt']['configured'])
+            self.assertEqual([c['id'] for c in data['clients']],['web','echoear-s3'])
+            self.assertEqual((await self.client.post('/api/connections/mqtt/start')).status,409)
+            self.assertEqual((await self.client.put('/api/connections/mqtt',json={})).status,409)
+        self.assertFalse(self.client.app[HUB].connections.status()['mqtt']['dependency_missing'])
+
     async def test_bind_failure_does_not_break_console(self):
         from unittest.mock import patch, AsyncMock
         with patch('aihub_server.mqtt_service.MqttService.start',new=AsyncMock(side_effect=OSError(49,'unavailable'))):

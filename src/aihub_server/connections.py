@@ -49,7 +49,11 @@ class Connections:
             self.device_port = saved.get('device_port', device_port)
 
     def config(self):
-        from .mqtt_service import load_config
+        # The transport modules need the optional `[mqtt]` extra. Missing it is a
+        # configuration state, not a server fault: report a code the console can
+        # explain instead of letting ImportError turn /api/connections into a 500.
+        try: from .mqtt_service import load_config
+        except ImportError: raise ConnectionError('mqtt_dependency_missing') from None
         if not self.path.exists(): raise ConnectionError('mqtt_not_configured')
         return load_config(self.path)
 
@@ -129,7 +133,6 @@ class Connections:
 
     async def action(self, action):
         if action not in ('start','stop','restart'): raise ValueError('invalid_transport_action')
-        from .mqtt_service import MqttService
         async with self.lock:
             if action in ('stop','restart'): await self._stop()
             if action == 'stop':
@@ -139,6 +142,7 @@ class Connections:
             service = None
             try:
                 cfg = self.config()
+                from .mqtt_service import MqttService
                 service = MqttService(self.hub, cfg)
                 await service.start()
                 self.hub.mqtt = service
@@ -156,7 +160,8 @@ class Connections:
         self.hub.publish({'type':'transport.status','transport':'mqtt_udp'})
 
     async def save(self, value):
-        from .mqtt_service import validate_config
+        try: from .mqtt_service import validate_config
+        except ImportError: raise ConnectionError('mqtt_dependency_missing') from None
         keys = {'broker_host','broker_port','udp_host','udp_port','devices'}
         if not isinstance(value, dict) or set(value) != keys: raise ValueError('invalid_transport_config')
         async with self.lock:
@@ -181,14 +186,17 @@ class Connections:
                     if address.is_private and not address.is_loopback:
                         addresses.append({'interface':interface,'address':item.address})
         service = self.hub.mqtt
-        cfg, config_error = None, None
+        cfg, config_error, dependency_missing = None, None, False
         try: cfg = self.config()
-        except ConnectionError: pass
+        except ConnectionError as exc: dependency_missing = str(exc) == 'mqtt_dependency_missing'
+        except ImportError: dependency_missing = True
         except (OSError, ValueError, KeyError, TypeError): config_error = 'mqtt_invalid_config'
         active = bool(service)
-        mqtt = dict(configured=cfg is not None, enabled=self.enabled,
+        error = self.error or config_error or (service.error if service else None)
+        if dependency_missing: error = 'mqtt_dependency_missing'
+        mqtt = dict(configured=cfg is not None, enabled=self.enabled, dependency_missing=dependency_missing,
             state='running' if service and service.ready.is_set() else 'connecting' if active else 'failed' if self.error or config_error else 'stopped',
-            error=self.error or config_error or (service.error if service else None), config=None)
+            error=error, config=None)
         if cfg:
             mqtt['config'] = {k:cfg[k] for k in ('broker_host','broker_port','udp_host','udp_port')}
             mqtt['config']['devices'] = {k:v.get('enabled',False) for k,v in cfg['devices'].items()}

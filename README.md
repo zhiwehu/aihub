@@ -70,13 +70,16 @@ export AIHUB_MODELS_TOKEN=<serve 启动时打印的令牌>
 cd ~/ai/aihub
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python \
-  -e ./aihub-common -e ./aihub-tools -e "./aihub-models[local]" -e ./aihub-server \
+  -e ./aihub-common -e ./aihub-tools -e "./aihub-models[local]" -e "./aihub-server[mqtt]" \
   pytest
 ```
 
 `[local]` 装上 MLX 推理（`mlx-lm`、`mlx-audio`）。**声纹不在里面**：发言人间隔需要
 `aihub-models[speaker]`（torch + speechbrain，体积很大），不装时录音照常工作，
 只是没有说话人标签，页面会提示 `recording.speaker_unavailable`。
+
+`[mqtt]` 装上 MQTT + UDP 传输（`aiomqtt`、`cryptography`）。不装时服务端照常运行，
+网页客户端也不受影响，只是「客户端接入」里的设备网关显示 `mqtt_dependency_missing`。
 
 ### 首次准备模型
 
