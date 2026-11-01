@@ -210,9 +210,17 @@ async def chat(pipeline, history):
         '。默认新闻源：'+cfg['news_source']+'，默认新闻条数：'+str(cfg['news_limit'])+
         '。用户未指定新闻源或条数时，arguments 中省略 source 和 limit，使用配置默认值。'
         '可用工具：'+json.dumps(available, ensure_ascii=False))
+        # The router only needs the request itself. Handing it the whole
+        # transcript makes the small local model answer as the assistant - the
+        # reply parses as junk and the caller reports a planner failure - so send
+        # the latest user turn, plus the previous one for follow-ups like "那明天呢".
+        from .extension_routing import is_followup
+        users=[m for m in history if m.get('role')=='user' and isinstance(m.get('content'),str)]
+        router=users[-1:]
+        if len(users)>1 and is_followup(users[-1]['content']):router=users[-2:]
         plan = ''
         try:
-            async with asyncio.timeout(20), contextlib.aclosing(pipeline.raw_chat(history, system_prompt=prompt)) as source:
+            async with asyncio.timeout(20), contextlib.aclosing(pipeline.raw_chat(router, system_prompt=prompt)) as source:
                 async for text in source:
                     plan += text
                     if len(plan) > 4096:
