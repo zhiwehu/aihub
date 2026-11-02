@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aihub_tools.rex_planner import RexPlanner, worker_env
+from aihub_tools.rex_planner_worker import runtime_root
 
 
 class RexPlannerEnvTests(unittest.TestCase):
@@ -25,3 +26,16 @@ class RexPlannerEnvTests(unittest.TestCase):
     def test_planner_remembers_the_root_it_was_built_with(self):
         self.assertEqual(RexPlanner(Path('/workspace/data')).root,Path('/workspace/data'))
         self.assertIsNone(RexPlanner().root)
+
+    def test_a_container_can_point_the_worker_at_a_linux_runtime(self):
+        # The vendored <data>/rex-runtime is a macOS pip tree; containers mount a
+        # Linux build elsewhere and select it through AIHUB_REX_RUNTIME.
+        with patch.dict(os.environ,{},clear=False):
+            os.environ.pop('AIHUB_REX_RUNTIME',None)
+            self.assertEqual(runtime_root(Path('/workspace/data')),
+                             Path('/workspace/data/rex-runtime'))
+            os.environ['AIHUB_REX_RUNTIME']='/data/rex-runtime-linux'
+            self.assertEqual(runtime_root(Path('/workspace/data')),
+                             Path('/data/rex-runtime-linux'))
+            self.assertEqual(worker_env(Path('/workspace/data'))['AIHUB_REX_RUNTIME'],
+                             '/data/rex-runtime-linux')

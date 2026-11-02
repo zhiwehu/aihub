@@ -7,9 +7,25 @@ from pathlib import Path
 from .settings import data_root
 
 
+def runtime_root(root=None):
+    """The vendored package tree used for Rex.
+
+    Defaults to <data>/rex-runtime, the tree the native install uses. Containers
+    point AIHUB_REX_RUNTIME at a copy built for Linux, because the default one is
+    a macOS pip tree (Mach-O extensions) that cannot be imported there.
+    """
+    import os
+    root=Path(root) if root is not None else data_root()
+    return Path(os.environ.get('AIHUB_REX_RUNTIME') or root/'rex-runtime').expanduser()
+
+
 class Engine:
     def __init__(self,adapter):
         root=data_root()
+        runtime=runtime_root(root)
+        # lora.py imports torch at module import time, which happens before
+        # rex_runtime.load() touches sys.path, so the runtime has to go first.
+        if runtime.is_dir():sys.path.insert(0,str(runtime))
         from .training.rex_runtime import load,LABELS
         from .training.everyday_schema import TOOL_LABELS,ACTION_LABELS
         from .training.lora import inject,load_adapter,merge
@@ -19,7 +35,7 @@ class Engine:
             raise ValueError('A joint decision/slot adapter is required')
         self.labels=config['labels'];self.actions=ACTION_LABELS if self.labels==TOOL_LABELS else {}
         if self.actions and config.get('action_labels')!=ACTION_LABELS:raise ValueError('Action schema mismatch')
-        self.model,self.tokenizer,_,self.trainer=load(root/'rex-runtime',root/'models/rex-uninlu-chinese-base',max_len=config.get('max_len',192))
+        self.model,self.tokenizer,_,self.trainer=load(runtime,root/'models/rex-uninlu-chinese-base',max_len=config.get('max_len',192))
         from safetensors.torch import load_file
         targets=inject(self.model,config['rank'],config['alpha'],config['dropout'])
         if targets!=config['targets']:raise ValueError('Target mismatch')

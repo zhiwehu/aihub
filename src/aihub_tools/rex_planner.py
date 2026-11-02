@@ -20,7 +20,8 @@ def worker_env(root=None):
     the workspace data directory that holds rex-runtime, the base model and the
     adapters.
     """
-    env={k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','LC_ALL','TMPDIR')}
+    env={k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','LC_ALL','TMPDIR',
+                                                     'AIHUB_REX_RUNTIME')}
     if root is not None:env['AIHUB_DATA_ROOT']=str(root)
     return env
 
