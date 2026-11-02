@@ -12,13 +12,26 @@ from pathlib import Path
 from aiohttp import web
 
 MAGIC = b'VOICEHUB-DEVICE/1\n'
+MAGIC_V2 = b'VOICEHUB-DEVICE/2\n'
 MAX_SIZE = 33 * 1024 * 1024
 ID = re.compile(r'[0-9]{20}-[a-f0-9]{32}')
 HEX = re.compile(r'[a-f0-9]{64}')
 MAC = re.compile(r'(?:[A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}')
+# Only regions this project can overwrite are backed up, so a backup stays
+# small enough to take before every connection setup.
+REGIONS = {'table': (0x8000, 4096), 'otadata': (0xd000, 0x2000), 'nvs': (0x9000, 0x4000),
+           'app0': (0x20000, 0x3F0000), 'app1': (0x410000, 0x3F0000)}
+KINDS = {'settings': ('table', 'otadata', 'nvs'), 'full': ('table', 'otadata', 'nvs', 'app0', 'app1')}
 
 
 def metadata(body):
+    """Validate a stored backup and return its metadata.
+
+    Version 1 is a complete 16/32MB image; version 2 lists the regions it
+    carries with a digest each. Both must describe one coherent device.
+    """
+    if body.startswith(MAGIC_V2):
+        return metadata_v2(body)
     if not body.startswith(MAGIC) or not len(MAGIC) + 4 < len(body) <= MAX_SIZE:
         raise ValueError('invalid_device_backup')
     length = struct.unpack_from('<I', body, len(MAGIC))[0]
@@ -35,6 +48,46 @@ def metadata(body):
         raise ValueError('invalid_device_backup')
     if hashlib.sha256(data).hexdigest() != value['sha256'] or hashlib.sha256(data[0x8000:0x8000 + 3072]).hexdigest() != value['layout']:
         raise ValueError('backup_checksum_failed')
+    return value
+
+
+def metadata_v2(body):
+    start = len(MAGIC_V2) + 4
+    if not start < len(body) <= MAX_SIZE:
+        raise ValueError('invalid_device_backup')
+    length = struct.unpack_from('<I', body, len(MAGIC_V2))[0]
+    if not 1 <= length <= 4096 or start + length >= len(body):
+        raise ValueError('invalid_device_backup')
+    value = json.loads(body[start:start + length])
+    if not isinstance(value, dict) or value.get('version') != 2 or value.get('kind') not in KINDS:
+        raise ValueError('invalid_device_backup')
+    if not MAC.fullmatch(value.get('mac', '')) or value.get('flashSize') not in ('16MB', '32MB'):
+        raise ValueError('invalid_device_backup')
+    if any(not isinstance(value.get(key), str) or not HEX.fullmatch(value[key]) for key in ('layout',)):
+        raise ValueError('invalid_device_backup')
+    if 'firmware' in value and (not isinstance(value['firmware'], str) or not HEX.fullmatch(value['firmware'])):
+        raise ValueError('invalid_device_backup')
+    entries = value.get('regions')
+    if not isinstance(entries, list) or not 1 <= len(entries) <= 8:
+        raise ValueError('invalid_device_backup')
+    names = []
+    for item in entries:
+        if not isinstance(item, dict) or item.get('name') not in REGIONS or item['name'] in names:
+            raise ValueError('invalid_device_backup')
+        if (item.get('address'), item.get('size')) != REGIONS[item['name']]:
+            raise ValueError('invalid_device_backup')
+        if not isinstance(item.get('sha256'), str) or not HEX.fullmatch(item['sha256']):
+            raise ValueError('invalid_device_backup')
+        names.append(item['name'])
+    if sorted(names) != sorted(KINDS[value['kind']]):
+        raise ValueError('invalid_device_backup')
+    offset = start + length
+    if offset + sum(item['size'] for item in entries) != len(body):
+        raise ValueError('invalid_device_backup')
+    for item in entries:
+        if hashlib.sha256(memoryview(body)[offset:offset + item['size']]).hexdigest() != item['sha256']:
+            raise ValueError('backup_checksum_failed')
+        offset += item['size']
     return value
 
 
