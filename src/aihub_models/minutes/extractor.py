@@ -85,6 +85,8 @@ def extraction_messages(chunk, template):
         f"转写片段：\n{chunk['text']}\n"
         f"输出 JSON schema：\n{SCHEMA}\n"
         "若某类没有内容，输出空数组。不要把推测写成决定。"
+        "证据 quote 只摘 8–20 个字的原文短语，不要整句照抄；"
+        "summary 不超过 60 字；每类最多 8 条。"
     )
     return [{'role': 'system', 'content': SYSTEM},
             {'role': 'user', 'content': user}]
@@ -227,17 +229,22 @@ def _validate_result(data, chunk):
 
 async def extract_chunk(engine, chunk, template, *, timeout=240):
     messages = extraction_messages(chunk, template)
+    # A chunk with long utterances makes the model quote whole sentences, and at
+    # 1400 tokens the JSON was cut off mid-object - which reads as "invalid JSON"
+    # and failed every retry. The second attempt gets real headroom.
+    budgets = (2000, 3600)
     last_error = None
-    for attempt in range(2):
+    for attempt, budget in enumerate(budgets):
         try:
-            text = await engine.generate(messages, max_tokens=1400, timeout=timeout)
+            text = await engine.generate(messages, max_tokens=budget, timeout=timeout)
             data = _parse_json(text)
             return _validate_result(data, chunk)
         except (ValueError, json.JSONDecodeError) as exc:
             last_error = exc
-            if attempt == 0:
+            if attempt + 1 < len(budgets):
                 messages = messages + [
-                    {'role': 'user', 'content': '上一次输出不是合法 JSON。请重新只输出一个 JSON 对象，不要任何解释。'}
+                    {'role': 'user', 'content': '上一次输出不是合法 JSON（可能被截断）。'
+                                                '请重新只输出一个 JSON 对象，证据只摘 8–20 字，不要任何解释。'}
                 ]
         except MinutesError:
             raise
