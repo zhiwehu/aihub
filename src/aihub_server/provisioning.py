@@ -54,7 +54,13 @@ async def prepare(request):
     if request.match_info['client']!='echoear-s3':raise web.HTTPNotFound()
     body=await request.json()
     if not isinstance(body,dict) or set(body)-{'host'}:raise ValueError('invalid_setup_request')
-    choices=interfaces();addresses={v['address'] for v in choices};host=body.get('host');connections=hub.connections
+    choices=interfaces();connections=hub.connections
+    if not choices and deployment()=='docker' and connections.device_host:
+        # The container cannot enumerate the host's LAN, but the address it
+        # advertises (compose --device-host, or connections.json) is exactly the
+        # one devices must dial, so the wizard can keep working through it.
+        choices=[{'interface':'host','address':connections.device_host,'label':'宿主机局域网'}]
+    addresses={v['address'] for v in choices};host=body.get('host')
     if host is not None and (not isinstance(host,str) or host not in addresses):raise ValueError('invalid_setup_address')
     if not host and connections.device_ready and connections.device_host in addresses:host=connections.device_host
     if not host:

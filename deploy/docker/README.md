@@ -157,8 +157,9 @@ docker 网关进来（`172.x`），peer 不再是 loopback，按原逻辑每次�
 容器只能看到自己的 `eth0`，所以网页「配网」按钮枚举网卡时会拿到 `172.x` —— 早期版本就是
 把这个地址写进了设备的 NVS，导致喵伴连不上。现在：
 
-- 容器里 `interfaces()` 直接返回空，「配网」按钮会明确提示「服务端运行在容器里，看不到宿主
-  的局域网网卡」；
+- 容器里 `interfaces()` 直接返回空，但「配网」会用服务端宣告的地址（下面的
+  `AIHUB_DEVICE_HOST`）继续走完流程——它正是设备要拨的地址；
+- 只有连宣告地址都没有时，才会提示「服务端运行在容器里，看不到宿主的局域网网卡」；
 - `configure.sh` 在宿主上探测局域网地址（`ipconfig getifaddr en0/en1/en2/en16`，只接受私有
   地址），写进 `.env` 的 `AIHUB_DEVICE_HOST`，同时修正 `data/connections.json`；
 - compose 把它作为 `--device-host` 传给服务端（监听仍然是 `--device-bind 0.0.0.0`）。

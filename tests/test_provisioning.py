@@ -35,6 +35,18 @@ class Provisioning(unittest.IsolatedAsyncioTestCase):
   self.assertEqual((await self.client.post('/api/clients/echoear-s3/prepare',json={},headers={'Host':'foreign.invalid'})).status,401)
   self.assertFalse(self.client.app[HUB].connections.device_ready)
 
+ async def test_container_prepare_uses_the_advertised_host(self):
+  hub=self.client.app[HUB]
+  hub.connections.device_host='192.168.0.105';hub.connections.device_ready=True
+  with patch('aihub_server.provisioning.deployment',return_value='docker'), \
+       patch('aihub_server.provisioning.interfaces',return_value=[]):
+   r=await self.client.post('/api/clients/echoear-s3/prepare',json={})
+  self.assertEqual(r.status,200)
+  cfg=await r.json()
+  self.assertEqual(cfg['host'],'192.168.0.105')
+  self.assertEqual(cfg['websocket']['url'],'ws://192.168.0.105:8766/xiaozhi/v1/')
+  self.assertEqual(cfg['ota_url'],'http://192.168.0.105:8766/xiaozhi/ota/'+hub.auth['device_token']+'/')
+
  async def test_container_never_offers_its_bridge_address(self):
   # Found in production: the wizard picked the container's eth0 and wrote 172.19.0.2
   # into the device's NVS, which no device can reach.
