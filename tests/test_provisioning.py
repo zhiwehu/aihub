@@ -4,6 +4,7 @@ import socket
 from unittest.mock import patch
 from aiohttp.test_utils import TestClient,TestServer
 from aihub_server.app import create_app,HUB
+from aihub_server.provisioning import interfaces
 
 class Provisioning(unittest.IsolatedAsyncioTestCase):
  async def asyncSetUp(self):
@@ -34,6 +35,16 @@ class Provisioning(unittest.IsolatedAsyncioTestCase):
   self.assertEqual((await self.client.post('/api/clients/echoear-s3/prepare',json={},headers={'Host':'foreign.invalid'})).status,401)
   self.assertFalse(self.client.app[HUB].connections.device_ready)
 
+ async def test_container_never_offers_its_bridge_address(self):
+  # Found in production: the wizard picked the container's eth0 and wrote 172.19.0.2
+  # into the device's NVS, which no device can reach.
+  with patch('aihub_server.provisioning.deployment',return_value='docker'):
+   self.assertEqual(interfaces(),[])
+   r=await self.client.post('/api/clients/echoear-s3/prepare',json={})
+   self.assertEqual(r.status,409)
+   body=await r.json()
+   self.assertEqual(body['error']['code'],'no_local_network')
+   self.assertIn('容器',body['error']['message'])
  async def test_idle_listener_moves_off_an_old_network_but_active_devices_are_preserved(self):
   from types import SimpleNamespace
   from unittest.mock import AsyncMock

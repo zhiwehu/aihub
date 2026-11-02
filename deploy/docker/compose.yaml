@@ -63,3 +63,7 @@ services:
       - "0.0.0.0"
       - "--device-port"
       - "8766"
+      # What devices are told to dial. configure.sh detects the host's LAN
+      # address; without it the server would only see the container's bridge IP.
+      - "--device-host"
+      - "${AIHUB_DEVICE_HOST}"

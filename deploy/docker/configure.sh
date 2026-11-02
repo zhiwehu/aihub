@@ -42,7 +42,7 @@ else
 fi
 
 "$PY" - "$SETTINGS" "$ASR_PORT" "$LLM_PORT" "$TTS_PORT" "$HERE/.env" "$DATA/docker-mounts" <<'PY'
-import json, os, sys, tempfile
+import ipaddress, json, os, subprocess, sys, tempfile
 from pathlib import Path
 from aihub_server.config import validate
 
@@ -75,7 +75,42 @@ def host_dir(value, name):
 
 music_dir = host_dir(config['tools'].get('music_directory'), 'music')
 files_dir = host_dir(config['tools'].get('file_directory'), 'files')
-Path(env_path).write_text(f'AIHUB_MUSIC_DIR={music_dir}\nAIHUB_FILES_DIR={files_dir}\n')
+
+# The container only sees its own bridge interface, so the address devices are
+# told to dial has to come from the host. Without this the wizard used to write
+# 172.x into the device's NVS, which no device can reach.
+def lan_address():
+    for iface in ('en0', 'en1', 'en2', 'en16'):
+        try:
+            result = subprocess.run(['ipconfig', 'getifaddr', iface],
+                                    capture_output=True, text=True, timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        raw = (result.stdout or '').strip()
+        try:
+            address = ipaddress.ip_address(raw)
+        except ValueError:
+            continue
+        if address.is_private and not (address.is_loopback or address.is_link_local):
+            return raw
+    return ''
+
+device_host = lan_address()
+Path(env_path).write_text(f'AIHUB_MUSIC_DIR={music_dir}\n'
+                          f'AIHUB_FILES_DIR={files_dir}\n'
+                          f'AIHUB_DEVICE_HOST={device_host}\n')
+if device_host:
+    preference = Path(path).parent / 'connections.json'
+    try:
+        saved = json.loads(preference.read_text())
+    except (OSError, ValueError):
+        saved = {'mqtt_enabled': False}
+    saved.update(device_enabled=True, device_host=device_host, device_port=8766)
+    saved.setdefault('mqtt_enabled', False)
+    preference.write_text(json.dumps(saved, ensure_ascii=False, indent=2))
+    print(f'设备入口地址: {device_host}:8766（已写入 connections.json）')
+else:
+    print('设备入口地址: 未探测到局域网地址（en0/en1/en16），设备入口将使用 connections.json 里的旧值')
 print('挂载目录:')
 print(f'  音乐 {music_dir} (只读)')
 print(f'  文件 {files_dir} (读写)')

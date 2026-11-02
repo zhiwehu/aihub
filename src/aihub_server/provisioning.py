@@ -6,6 +6,7 @@ import sys
 from aiohttp import web
 import psutil
 from .connections import ConnectionError
+from .system import deployment
 
 
 def hardware_ports():
@@ -21,6 +22,11 @@ def hardware_ports():
 
 
 def interfaces():
+    # Inside a container the only interface is the bridge, and its address is
+    # unreachable from a device - advertising it used to bake 172.x into the
+    # device's NVS. The operator sets the advertised host instead (compose
+    # passes --device-host, or the console's connection settings do it).
+    if deployment()=='docker':return []
     result=[];states=psutil.net_if_stats();ports=hardware_ports()
     for name,items in psutil.net_if_addrs().items():
         if name.startswith(('lo','utun','tun','tap','docker','veth','feth','bridge','awdl','llw','tailscale','vmnet','vboxnet','virbr')):continue
@@ -56,8 +62,14 @@ async def prepare(request):
         preferred=default_address()
         host=wifi[0]['address'] if len(wifi)==1 else preferred if preferred in addresses else choices[0]['address'] if len(choices)==1 else None
     if not host:
+        if choices:
+            message='请选择喵伴要连接的本机网络。'
+        elif deployment()=='docker':
+            message='服务端运行在容器里，看不到宿主的局域网网卡。请在连接设置里填写本机局域网地址，或直接下载连接配置手动配网。'
+        else:
+            message='请先让这台电脑连接可供喵伴使用的局域网。'
         return web.json_response({'error':{'code':'choose_network' if choices else 'no_local_network',
-            'message':'请选择喵伴要连接的本机网络。' if choices else '请先让这台电脑连接可供喵伴使用的局域网。'},'interfaces':choices},status=409)
+            'message':message},'interfaces':choices},status=409)
     async with hub.provision_lock:
         try:
             if connections.device_ready and connections.device_host!=host:
