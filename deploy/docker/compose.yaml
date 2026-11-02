@@ -13,6 +13,9 @@ services:
     environment:
       AIHUB_WEB_ROOT: /app/web
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
+      # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
+      # produces a Linux copy next to it and the planner worker loads this one.
+      AIHUB_REX_RUNTIME: /data/rex-runtime-linux
     ports:
       # Console, loopback only — same reach as native mode (start.sh binds
       # 127.0.0.1). The container still sees Docker's gateway as the peer, which

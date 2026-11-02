@@ -55,9 +55,7 @@ config['asr'].update(provider='http', url=f'http://{host}:{asr_port}/v1')
 config['llm'].update(provider='http', url=f'http://{host}:{llm_port}/v1')
 config['tts'].update(provider='http', url=f'http://{host}:{tts_port}/v1',
                      voice='Serena', sample_rate=24000)
-# The Rex planner loads <data>/rex-runtime, a macOS pip tree (Mach-O .so files),
-# so it cannot start in the Linux container. The HTTP-backed LLM planner can.
-config['tools'] = {**config['tools'], 'planner': 'llm'}
+
 
 # Bind-mount the music and file folders at their own host paths, so the paths
 # saved in settings.json stay valid in both deployment modes. compose reads these
