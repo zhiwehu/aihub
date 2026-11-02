@@ -16,6 +16,9 @@ services:
       # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
       # produces a Linux copy next to it and the planner worker loads this one.
       AIHUB_REX_RUNTIME: /data/rex-runtime-linux
+      # The USB provisioning assistant is a module from aihub-firmware; the
+      # console imports it from /firmware, so the directory has to be published.
+      AIHUB_FIRMWARE_ROOT: /firmware
     ports:
       # Console, loopback only — same reach as native mode (start.sh binds
       # 127.0.0.1). The container still sees Docker's gateway as the peer, which
@@ -35,6 +38,8 @@ services:
       # live config and writes them to .env; export them to override.
       - "${AIHUB_MUSIC_DIR}:/${AIHUB_MUSIC_DIR}:ro"
       - "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"
+      # Web Serial flashing assistant (aihub-firmware/flash), read-only.
+      - "${AIHUB_FIRMWARE_DIR:-../../../aihub-firmware/flash}:/firmware:ro"
     extra_hosts:
       # Docker Desktop resolves this already; host-gateway keeps it working if
       # the image is ever run under a plain Linux engine.

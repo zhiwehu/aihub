@@ -152,6 +152,19 @@ docker 网关进来（`172.x`），peer 不再是 loopback，按原逻辑每次�
 .venv/bin/python -m aihub_server --data data --print-admin-token
 ```
 
+## 固件刷写助手（USB 配网）
+
+控制台的 USB 向导不是网页自带的，它直接 `import('/firmware/echoear-installer.js')`
+——模块来自 `aihub-firmware`。容器里没有这个目录，所以 compose 把
+`aihub-firmware/flash` 只读挂到 `/firmware`，并设置 `AIHUB_FIRMWARE_ROOT=/firmware`
+（和原生 `start.sh` 里的设置对应）。目录很小（约 400 KB）。
+
+不设置时的表现就是控制台提示「USB 连接与配网助手没有加载」。要换目录用环境变量：
+
+```sh
+AIHUB_FIRMWARE_DIR=/path/to/aihub-firmware/flash docker compose up -d
+```
+
 ## Rex 规划器
 
 Rex 是纯 PyTorch 分类器，容器里能跑；卡住的是它加载的运行时目录：
