@@ -327,6 +327,21 @@ class RecordingSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(event['type'] == 'recording.transcription_unavailable'
                             for event in self.events))
 
+    def test_recording_transcription_follows_whether_asr_is_on_this_machine(self):
+        cases = [
+            ({'provider': 'builtin'}, True),
+            ({'provider': 'http', 'url': 'http://127.0.0.1:8781/v1'}, True),
+            ({'provider': 'http', 'url': 'http://localhost:8781/v1'}, True),
+            # Docker Desktop maps this alias to the host's own loopback.
+            ({'provider': 'http', 'url': 'http://host.docker.internal:8781/v1'}, True),
+            ({'provider': 'http', 'url': 'http://192.168.0.50:8781/v1'}, False),
+            ({'provider': 'http', 'url': 'https://api.example.com/v1'}, False),
+            ({'provider': 'http'}, False),
+        ]
+        for asr, expected in cases:
+            self.pipeline.config = {'asr': asr}
+            self.assertEqual(self.session.recording_local_asr_allowed(), expected, asr)
+
     async def test_http_asr_never_receives_recording_audio_for_stop_detection(self):
         self.pipeline.config = {'asr': {'provider': 'http'}}
         self.assertFalse(self.session.recording_local_asr_allowed())

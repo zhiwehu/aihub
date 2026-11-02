@@ -5,7 +5,9 @@ import contextlib
 import json
 import os
 import re
+import ipaddress
 import time
+from urllib.parse import urlsplit
 import uuid
 from dataclasses import dataclass, field
 from aihub_tools import phrasing
@@ -125,10 +127,34 @@ class Session:
                 and time.monotonic() >= self.recording_listen_after)
 
     def recording_local_asr_allowed(self):
-        """Only local ASR may hear a recording; never stream it to an HTTP provider."""
+        """May recording audio leave for ASR without leaving this machine?
+
+        The rule is about the recording never reaching a third party, not about
+        the transport: an HTTP provider on loopback - including the Docker bridge
+        alias host.docker.internal, which resolves to the host's own loopback - is
+        still local. A provider on another machine or the internet is not, and
+        recordings stay untranscribed there.
+        """
         config = getattr(self.pipeline, 'config', None)
         asr = config.get('asr') if isinstance(config, dict) else None
-        return not isinstance(asr, dict) or asr.get('provider', 'builtin') == 'builtin'
+        if not isinstance(asr, dict):
+            return True
+        provider = asr.get('provider', 'builtin')
+        if provider == 'builtin':
+            return True
+        if provider != 'http':
+            return False
+        try:
+            host = urlsplit(asr.get('url') or '').hostname or ''
+        except ValueError:
+            return False
+        if host in ('localhost', 'host.docker.internal'):
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
+
 
     async def start_recording(self, trigger='voice', current_turn=None):
         if self.closed:
