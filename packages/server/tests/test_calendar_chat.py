@@ -47,3 +47,33 @@ class CalendarChatTests(unittest.IsolatedAsyncioTestCase):
    async def invalid(*args,**kwargs):yield json.dumps({'operation':'create','title':'其他事项','date':'明天','time':'15:00'})
    p.raw_chat=invalid;[v async for v in route(p,[{'role':'user','content':'查一下明天日程'}])]
    self.assertEqual(len(store.load()['events']),1)
+
+ async def test_tool_discussion_does_not_request_calendar_work(self):
+  with tempfile.TemporaryDirectory() as root:
+   p=SimpleNamespace(runtime=SimpleNamespace(calendar=CalendarStore(root)),session_id='one',config=DEFAULT)
+   for text in ('我刚才三个工具嘛：天气、新闻、日程。','但这个里面是要有优化的。','这三个工具包括日程。'):
+    with self.subTest(text=text):self.assertIsNone(route(p,[{'role':'user','content':text}]))
+
+ async def test_today_and_tomorrow_query_uses_both_days_without_model_guesses(self):
+  from zoneinfo import ZoneInfo
+  with tempfile.TemporaryDirectory() as root:
+   store=CalendarStore(root);now=datetime.now(ZoneInfo(store.settings()['timezone']))
+   for days,title in ((0,'下班'),(1,'开会')):
+    start=(now+timedelta(days=days)).replace(hour=23,minute=59,second=0,microsecond=0)
+    store.create(title,start.isoformat(),remind_minutes=0)
+   class Pipeline:
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    async def raw_chat(self,*args,**kwargs):raise AssertionError('explicit period must not require model slots');yield ''
+   replies=[v async for v in route(Pipeline(),[{'role':'user','content':'我今天和明天一共有哪些日程？'}])]
+   self.assertIn('查到2项日程',replies[-1]);self.assertIn('下班',replies[-1]);self.assertIn('开会',replies[-1])
+
+ async def test_weekday_query_keeps_specific_day_instead_of_whole_week(self):
+  with tempfile.TemporaryDirectory() as root:
+   store=CalendarStore(root);calls=[]
+   class Pipeline:
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    async def raw_chat(self,*args,**kwargs):calls.append(True);yield '{"date":"下周一"}'
+   replies=[v async for v in route(Pipeline(),[{'role':'user','content':'下周一有哪些日程？'}])]
+   started=next(v for v in replies if getattr(v,'phase',None)=='started')
+   begin=datetime.fromisoformat(started.arguments['range_start']);end=datetime.fromisoformat(started.arguments['range_end'])
+   self.assertEqual(calls,[True]);self.assertEqual(begin.weekday(),0);self.assertEqual((end-begin).days,1)

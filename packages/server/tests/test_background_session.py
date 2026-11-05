@@ -155,10 +155,24 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
  async def test_acknowledgement_is_generated_from_the_current_request(self):
   prompts=[]
   async def raw_chat(history,**kwargs):
-   prompts.append((history,kwargs));yield '我先核对你说的慢查询，查好马上告诉你。'
+   prompts.append((history,kwargs));yield '{"focus":"慢查询","variant":1}'
   self.pipeline.raw_chat=raw_chat
   await self.session.submit('慢查询')
   await self.started.wait()
-  await self.wait_for(lambda:any('我先核对你说的慢查询' in e.get('text','') for e in self.events))
+  await self.wait_for(lambda:any('我先核对“慢查询”的相关内容' in e.get('text','') for e in self.events))
   self.assertEqual(prompts[0][0][-1]['content'],'慢查询')
   self.assertLessEqual(prompts[0][1]['max_tokens'],80)
+
+ async def test_stop_speaking_mutes_current_batch_without_cancelling_work_or_future_results(self):
+  await self.session.submit('慢查询');await self.started.wait()
+  await self.session.submit('不用说了')
+  if self.session.turn:await self.session.turn.task
+  self.assertTrue(self.ops.tasks)
+  self.release.set();await self.wait_for(lambda:not self.ops.tasks)
+  record=next(r for r in self.ops.recent('one') if r['label']=='慢查询')
+  self.assertEqual(record['status'],'completed');self.assertEqual(record['delivery'],'muted')
+  self.assertEqual(record['text'],'慢查询真实结果。')
+  await asyncio.sleep(.7)
+  self.assertFalse(any(e['type']=='reply.final' and ('慢查询真实结果' in e.get('text','') or e.get('text')=='不用说了') for e in self.events))
+  self.ops.notify('f'*32,'one','新任务','这是新任务的结果。')
+  await self.wait_for(lambda:any(e['type']=='reply.final' and '新任务的结果' in e.get('text','') for e in self.events))

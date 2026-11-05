@@ -259,3 +259,13 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(chunks), 20)
         self.assertTrue(ended)
         self.assertLess(ended[0] - chunks[0], .95)
+
+    async def test_interruption_status_is_not_fed_back_as_reply_text(self):
+        self.store.message('one','old','assistant','上轮回答。（回复被打断）（回复被打断）','interrupted')
+        seen=[]
+        async def chat(history):seen.extend(history);yield '当前回答。'
+        self.pipeline.chat=chat
+        await self.session.submit('新问题')
+        await self.session.turn.task
+        self.assertEqual(seen[0]['content'],'上轮回答。')
+        self.assertFalse(any('回复被打断' in row['content'] for row in seen))

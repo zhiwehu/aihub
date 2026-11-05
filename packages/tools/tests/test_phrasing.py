@@ -18,21 +18,23 @@ class PhrasingTests(unittest.TestCase):
         self.assertIn(phrasing.progress('上海今天天气怎么样'),phrasing._ACKS['weather'])
         self.assertIn(phrasing.progress('看看最新新闻'),phrasing._ACKS['news'])
 
-    def test_announcement_never_uses_a_status_label(self):
-        spoken=phrasing.announcement('上海今天多云，22 到 28 度。')
-        self.assertIn('上海今天多云，22 到 28 度。',spoken)
-        self.assertNotIn('后台任务结果',spoken)
-        self.assertNotIn('后台处理完成',spoken)
-        self.assertTrue(any(spoken.startswith(lead) for lead in phrasing._LEADS),spoken)
+    def test_verified_results_are_spoken_without_invented_leads(self):
+        text='上海今天多云，22 到 28 度。'
+        self.assertEqual(phrasing.announcement(text),text)
 
-    def test_announcement_leads_rotate(self):
-        leads={phrasing.announcement('结果。')[:3] for _ in range(5)}
-        self.assertGreater(len(leads),1,leads)
+    def test_repeated_results_do_not_get_random_conversational_filler(self):
+        text='确认的查询结果。'
+        self.assertEqual([phrasing.announcement(text) for _ in range(6)],[text]*6)
 
-    def test_long_result_is_capped_and_points_at_the_page(self):
-        spoken=phrasing.announcement('长'*300)
-        self.assertLessEqual(len(spoken),122+len(max(phrasing._LEADS,key=len))+len(max(phrasing._TAILS,key=len)))
-        self.assertTrue(any(spoken.endswith(tail) for tail in phrasing._TAILS),spoken)
+    def test_long_results_are_complete_without_web_redirects(self):
+        text='第一条新闻：相关报道的内容。'*15+'最后一条新闻：完整的核实结果。'
+        self.assertEqual(phrasing.announcement(text),text)
+        for status in ('completed','failed','waiting'):
+            with self.subTest(status=status):
+                spoken=phrasing.announcement(text,status=status)
+                self.assertEqual(spoken,text)
+                self.assertNotIn('网页',spoken)
+                self.assertNotIn('不念了',spoken)
 
     def test_truncation_never_leaves_a_half_clause(self):
         # 真实案例：按字符硬切会切出「还有一。」这种半句。

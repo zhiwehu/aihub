@@ -33,3 +33,14 @@ class OperationsTests(unittest.IsolatedAsyncioTestCase):
    atomic_json(path/(identity+'.json'),{'id':identity,'session_id':'one','turn_id':'old','label':'旧任务','status':'running','delivery':'pending','created':1,'last_tool':{'name':'mail','phase':'started'}})
    events=[];ops=Operations(root,publish=events.append)
    self.assertFalse(ops.tasks);self.assertEqual(ops.get(identity)['status'],'unknown');self.assertTrue(any(e['type']=='tool.failed' for e in events));await ops.close()
+ async def test_muting_notifications_is_scoped_and_survives_running_status_updates(self):
+  with tempfile.TemporaryDirectory() as root:
+   ops=Operations(root);gate=asyncio.Event();release=asyncio.Event()
+   async def source():
+    yield ToolStatus('slow','started');await release.wait();yield ToolStatus('slow','completed');yield '保存的结果。'
+   record=ops.start('one','turn','慢查询',source(),gate);gate.set();await asyncio.sleep(.01)
+   other=ops.notify('a'*32,'other','其他会话','其他会话结果。')
+   ops.mute_notifications('one');release.set();await asyncio.gather(*list(ops.tasks.values()))
+   self.assertEqual(ops.get(record['id'])['delivery'],'muted')
+   self.assertEqual(ops.get(record['id'])['text'],'保存的结果。')
+   self.assertEqual(ops.get(other['id'])['delivery'],'pending');await ops.close()

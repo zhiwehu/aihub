@@ -20,9 +20,11 @@ Authenticated client API additions:
   credential. Temporary progress notices and other clients' tasks are excluded.
 
 ToolNotice transfers work to the existing application-owned Operations queue before
-first-response synthesis. A separate model call generates a contextual first
-sentence, bounded to 1.2 seconds / 72 tokens; timeout or invalid output falls back
-to a sentence naming the request. Interrupting input or speech does not cancel
+first-response synthesis. A bounded model call (1.2 seconds / 72 tokens) may select only a literal
+substring of the current request and a validated wording variant. Server-owned
+phrases render the first feedback; model prose, invented facts, questions and
+capability claims cannot be sent as preparation feedback. Invalid JSON or an
+ungrounded focus falls back to wording that quotes the actual request. Interrupting input or speech does not cancel
 Operations. Explicit cancellation remains a separate action.
 
 A notification becomes consumed before its first PCM chunk is sent. Interrupting
@@ -31,8 +33,31 @@ including after reconnect. Work/results remain stored. A result interrupted befo
 any audio begins stays pending and can be announced when the session is quiet.
 Server restart never automatically re-executes side-effecting tool work.
 
-Validation (2026-11-05): server 312 passed + 18 subtests, with only the documented
-pre-existing wake-phrase failure; tools 79 passed + 12 subtests; admin 14 Node tests;
-artifact integrity 1 test; independent client 8 Node tests. Real browser validated
+Validation (2026-11-05): server 320 passed + 25 subtests, with only the documented
+pre-existing wake-phrase failure; tools 84 passed + 15 subtests; admin 14 Node tests;
+artifact integrity 1 test; independent client 9 Node tests. Real browser validated
 connection, calendar tool history, chat/recording menu switching and desktop/mobile
 layout. Full hardware microphone interruption still needs the user's live test.
+
+
+## Conversation corrections from runtime logs (2026-11-05)
+
+15:39 weather/news feedback invented questions/facts before tool results. Preparation
+feedback now uses the structured selection contract above, covered by exact logged
+counterexamples. Finished results are spoken fully as supplied, without random
+lead-ins, default 120-character truncation or web-only continuation messages.
+
+16:12 calendar conversation exposed three further issues: interrupted-state text
+was injected into model history; keyword-only tool discussion triggered calendar
+work; and stop-speaking requests left a backlog of announcements. State suffixes
+are now kept out of model input/output, ordinary conversation rejects unexecuted
+action claims, tool-feedback discussion does not authorize a calendar call, and
+explicit today/tomorrow date-range queries use deterministic boundaries. Specific
+weekdays/dates still follow slot extraction. Placeholder model questions are not
+spoken literally.
+
+“不要说了”/“不用说了” silences the current notification batch in that session,
+including work still running, while preserving execution and stored results. The
+muted delivery state survives subsequent operation updates and server restarts;
+new tasks and other sessions remain unaffected. Ordinary speech interruption
+continues to stop only the current playback. No existing reminder IDs are changed.

@@ -34,12 +34,15 @@ def route(pipeline,history):
  if pending and re.fullmatch(r'(?:取消|取消任务|取消设置|算了|先不用了)[。！!]*',text):
   pipeline._calendar_pending=None;pipeline._calendar_request_seq=getattr(pipeline,'_calendar_request_seq',0)+1
   return refusal('好的，不会创建这项日程。')
+ if is_conversational_turn(text):return None
  topic=bool(re.search('日程|提醒|安排',text))
  if pending and not topic and calendar_answer(text) is None and not is_conversational_turn(text):
   has_time=bool(re.search(r'[0-9零一二三四五六七八九十两]+(?:点|时|分钟后|小时后)|\d{1,2}[:：]\d{2}',text))
   date_only=bool(re.fullmatch(r'(?:今天|明天|后天|(?:本周|下周|周|星期)[一二三四五六日天]|\d{4}-\d{2}-\d{2})[。！!]*',text))
   title_only=pending.get('needs_title') and len(text)<60 and not re.search('什么|天气|新闻|查|问|为什么|怎么|[？?]',text)
   if (has_time or date_only or title_only) and not re.search(r'什么|是否|是不是|为什么|怎么|几点|吗|[？?]',text):text=pending['text']+'；用户补充（以此为准）：'+text;topic=True
+ explicit=bool(re.search(r'查|看|有哪些|有什么|什么提醒|我的提醒|几项|几点|什么时候|哪天|列表|添加|新建|创建|设置|记一下|记下来|取消|删除|提醒(?:我|一下|下)|安排(?:个|一个|一场)',text) or re.search(r'(?:今天|明天|后天|点|分钟后|小时后).*提醒',text) or re.fullmatch(r'(?:(?:我|今天|明天|后天|本周|下周|本月|的))*?(?:日程|提醒|安排)[？?。！!]*',text))
+ if not explicit:return None
  if not topic or re.search(r'怎么|如何|什么意思|解释|介绍|支持.*吗',text):return None
  if re.match(r'^(?:请)?(?:暂时)?(?:不要|先别|别|不需要)',text) and re.search('添加|新建|创建|设置|安排',text):return refusal('好的，不会创建日程或提醒。')
  if not pipeline.config['tools'].get('calendar'):return refusal('日程工具还没开启，请在网页上打开日程和提醒。')
@@ -71,14 +74,23 @@ async def execute(pipeline,history,text,store,sequence):
   candidates=[{'title':e['title'],'date':datetime.fromtimestamp(e['start_time'],ZoneInfo(e['timezone'])).strftime('%Y-%m-%d'),'time':datetime.fromtimestamp(e['start_time'],ZoneInfo(e['timezone'])).strftime('%H:%M')} for e in store.load()['events'].values() if e['status']=='active'][:20]
   prompt+='取消时title必须逐字匹配已有日程标题，不添加“提醒”“日程”等修饰词。已有日程：'+json.dumps(candidates,ensure_ascii=False)
  try:
-  output=''
-  async with asyncio.timeout(25):
-   async for delta in pipeline.raw_chat([{'role':'user','content':text}],system_prompt=prompt,max_tokens=400):
-    output+=delta
-    if len(output)>5000:raise ValueError('calendar_slots_invalid')
-  value=json.loads(output);Draft202012Validator(SLOTS).validate(value)
+  periods=[p for p in ('今天','明天','后天','本周','下周','本月','未来7天') if p in text]
+  period='今明两天' if re.search(r'今天(?:和|与|及|、)明天|今明两天',text) else periods[0] if len(periods)==1 else None
+  specific_date=re.search(r'(?:本周|下周)(?:星期|周)?[一二三四五六日天]|本月[0-9一二三四五六七八九十]|[0-9]{1,4}[-年月/]',text)
+  if action=='query' and period and not specific_date:
+   value={'period':period}
+  else:
+   output=''
+   async with asyncio.timeout(25):
+    async for delta in pipeline.raw_chat([{'role':'user','content':text}],system_prompt=prompt,max_tokens=400):
+     output+=delta
+     if len(output)>5000:raise ValueError('calendar_slots_invalid')
+   value=json.loads(output);Draft202012Validator(SLOTS).validate(value)
   if 'operation' in value and value['operation']!=action:raise ValueError('calendar_operation_mismatch')
-  if value.get('question'):pending(not value.get('title'));yield value['question'];return
+  if value.get('question'):
+   pending(not value.get('title'))
+   yield '请说明要查询哪一天或哪个时间范围的日程。' if action=='query' else '请说明要取消的日程事项和日期。' if action=='cancel' else '请明确日程是哪一天、几点，以及要提醒的事项。'
+   return
   if action=='create':
    if not value.get('title'):pending(True);yield '这项日程要提醒你做什么？';return
    if 'in_minutes' in value:
@@ -97,7 +109,8 @@ async def execute(pipeline,history,text,store,sequence):
   elif action=='query':
    period=value.get('period','未来7天');date=resolve_date(value['date'],now.date()) if value.get('date') else now.date();days=1
    if not value.get('date'):
-    if period in ('今天','明天','后天'):date=resolve_date(period,date)
+    if period=='今明两天':days=2
+    elif period in ('今天','明天','后天'):date=resolve_date(period,date)
     elif period in ('本周','下周'):date=date-timedelta(days=date.weekday())+timedelta(days=7 if period=='下周' else 0);days=7
     elif period=='本月':
      date=date.replace(day=1);next_month=(date.replace(day=28)+timedelta(days=4)).replace(day=1);days=(next_month-date).days

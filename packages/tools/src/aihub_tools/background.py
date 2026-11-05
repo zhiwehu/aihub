@@ -21,12 +21,18 @@ class Operations:
     if last.get('phase')=='started':self.publish({'type':'tool.failed','session_id':record['session_id'],'turn_id':record['turn_id'],'tool':last['name'],'background':True,'code':'operation_interrupted','timestamp':time.time()})
     record.update(status='unknown',text='应用在执行中重启，结果需要核实，不会自动重新执行。',delivery='pending');self.save(record)
  def save(self,record):
+  path=record_path(self.path,record['id'])
+  if record.get('delivery')=='pending' and path.exists() and read_json(path).get('delivery')=='muted':record['delivery']='muted'
   record['updated']=time.time();atomic_json(record_path(self.path,record['id']),record)
   self.publish({'type':'operation.changed','operation_id':record['id'],'session_id':record['session_id'],'turn_id':record.get('turn_id'),'status':record['status'],'delivery':record.get('delivery')})
  def get(self,identity):return read_json(record_path(self.path,identity))
  def recent(self,scope=None):
   rows=[read_json(p) for p in sorted(self.path.glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True)[:100]]
   return [r for r in rows if scope is None or r['session_id']==scope][:30]
+ def mute_notifications(self,scope):
+  for path in self.path.glob('*.json'):
+   record=read_json(path)
+   if record['session_id']==scope and record['delivery']=='pending':record['delivery']='muted';self.save(record)
  def pending(self,scope):return list(reversed([r for r in self.recent(scope) if r['delivery']=='pending' and r['status'] not in ('running','queued')]))
  def bind(self,scope,callback):
   self.listeners[scope]=callback
@@ -40,7 +46,7 @@ class Operations:
   try:record=self.get(identity)
   except FileNotFoundError:
    if len(list(self.path.glob('*.json')))>=1000:
-    removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted')]
+    removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted','muted')]
     if not removable:raise ValueError('operation_history_full')
     min(removable,key=lambda p:p.stat().st_mtime).unlink()
    record={'id':identity,'session_id':scope,'turn_id':None,'label':label,'text':text,'status':'completed','delivery':'pending','created':time.time(),**metadata};self.save(record)
@@ -54,7 +60,7 @@ class Operations:
  def start(self,scope,turn_id,label,source,gate,emit=None,progress_text=None):
   self.check_capacity(scope)
   if len(list(self.path.glob('*.json')))>=1000:
-   removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted')]
+   removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted','muted')]
    if not removable:raise ValueError('operation_history_full')
    min(removable,key=lambda p:p.stat().st_mtime).unlink()
   record={'id':uuid.uuid4().hex,'session_id':scope,'turn_id':turn_id,'label':label[:120],'status':'queued','delivery':'pending','created':time.time(),'text':''};self.save(record)
@@ -83,7 +89,7 @@ class Operations:
        if len(text)>16000:raise ValueError('operation_output_limit')
      record.update(status='waiting' if str(record.get('workflow_status','')).startswith('waiting_') else 'cancelled' if record.get('workflow_status')=='cancelled' else 'failed' if failed else 'completed',text=text.strip() or '任务处理结束，请查看任务记录。')
    except asyncio.CancelledError:record.update(status='unknown',text='已请求停止执行；正在进行的外部操作可能已经生效，请核实记录。')
-   except Exception:record.update(status='failed',text='后台任务未能完成，请在网页上查看原因。')
+   except Exception:record.update(status='failed',text='这次处理没有成功。')
    finally:
     if progress_task:
      progress_task.cancel()

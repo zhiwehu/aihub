@@ -62,7 +62,7 @@ def summary(name,action,value):
  if status=='needs_selection':return '有重名或多个候选，请明确'+('计时器名称，并使用不同名字新建。' if name=='timer' else '完整名称。')
  if status=='not_found':return '没有找到对应记录，请先查询列表或说明完整名称。'
  if name=='shopping_list':
-  if action=='list':return '购物清单为空。' if not rows else '购物清单：'+'；'.join(r['name']+('，已买好' if r['state']=='bought' else '，待购买') for r in rows[:15])+('；还有更多条目，网页上能看到。' if len(rows)>15 else '。')
+  if action=='list':return '购物清单为空。' if not rows else '购物清单：'+'；'.join(r['name']+('，已买好' if r['state']=='bought' else '，待购买') for r in rows[:15])+(f'；另外还有{len(rows)-15}项。' if len(rows)>15 else '。')
   return {'add':'已加入购物清单。','complete':'已标记为买好。','remove':'已从购物清单移除。'}[action]
  if name=='item_memory':
   if action=='remember':return '记住了，'+rows[0]['item']+'在'+rows[0]['location']+'。'

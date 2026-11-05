@@ -74,10 +74,17 @@ def is_small_talk(text):
     return re.search(r'(?:今天|昨天|最近|日子|你)[^，,。！？!?]{0,4}过得',text) is not None
 
 
+def is_tool_feedback(text):
+    """Feedback about the assistant's tooling does not authorize another tool call."""
+    if re.search(r'^(?:请|帮我|麻烦你)|查一下|查询|查看|有哪些|有什么|设置|创建|添加|取消|删除|提醒我',text):
+        return False
+    return re.search(r'优化|响应速度|调用工具.*(?:准|慢)|(?:刚才|之前|这几个|三个).*工具',text) is not None
+
+
 def is_conversational_turn(text):
     """Only complete social/stop turns; quoted words and mixed requests stay routable."""
     compact=re.sub(r'[\s，。！？,.!?~～、]+','',text.lower())
-    if is_wake_only(text) or is_small_talk(text):
+    if is_wake_only(text) or is_small_talk(text) or is_tool_feedback(text):
         return True
     return re.fullmatch(
         r'(?:(?:谢谢你?|好的?|那|嗯|先这样|就这样){0,3}'
@@ -85,7 +92,7 @@ def is_conversational_turn(text):
         r'|(?:非常好|很好|太好了|太棒了|真棒|不错|好棒|好|好的|好啊|好呀|嗯|嗯嗯|明白了|知道了|了解了)(?:了|啊|呀|呢)?(?:谢谢(?:你|您)?)?'
         r'|(?:嗯|那|好|是)?(?:还)?(?:可以|行|挺好|不错|一般般?|凑合)(?:啊|呀|吧|呢|的|了)?'
         r'|你好|您好|嗨|hello|hi|谢谢(?:你|您)?(?:了)?|多谢|晚安'
-        r'|(?:那|好的?|嗯)?(?:先)?(?:别说了|不要说了|不用了|不说了|停一下))',compact) is not None
+        r'|(?:那|好的?|嗯)?(?:先)?(?:别说了|不要说了|不用说了|不用了|不说了|停一下))',compact) is not None
 
 
 def music_candidate(text):

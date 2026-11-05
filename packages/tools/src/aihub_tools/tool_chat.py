@@ -146,8 +146,9 @@ async def chat(pipeline, history):
         return
     if is_conversational_turn(latest):
         pipeline._previous_tool_plan=None
-        instructions=pipeline.config['system_prompt']+'\n用户本轮是日常招呼、感谢、告别或表示先不说了。只自然、简短地回应本轮，不延续之前的查询，不提工具或参数。'
-        async with contextlib.aclosing(pipeline.raw_chat(history,system_prompt=instructions)) as source:
+        instructions=pipeline.config['system_prompt']+'\n用户本轮是普通交流、使用反馈、招呼、感谢、告别或表示先不说了。只自然、简短地回应本轮，不延续之前的查询，不提工具或参数。'
+        from .conversation import reply
+        async with contextlib.aclosing(reply(pipeline,history,instructions)) as source:
             async for text in source:yield text
         return
     cfg = pipeline.config['tools']
@@ -236,7 +237,8 @@ async def chat(pipeline, history):
             return
     if name is None:
         instructions = pipeline.config['system_prompt'] + '\n本轮未执行任何工具。普通聊天自然回答，不主动索要工具参数或延续上一轮查询。只有本轮确实请求实时查询且必要信息缺失时才追问；不要声称已查询或执行操作。'
-        async with contextlib.aclosing(pipeline.raw_chat(history, system_prompt=instructions)) as source:
+        from .conversation import reply
+        async with contextlib.aclosing(reply(pipeline,history,instructions)) as source:
             async for text in source:
                 yield text
         return

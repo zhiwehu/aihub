@@ -726,8 +726,12 @@ class Session:
                 if announcement is None:
                     self.store.message(self.id, turn.id, 'user', text, 'confirmed')
                     await self.emit('message.user', turn, text=text)
-                history = [{'role': m['role'], 'content': m['content'] +
-                            ('（回复被打断）' if m['status'] == 'interrupted' else '')}
+                compact=re.sub(r'[\s，。！？,.!?]','',text)
+                if announcement is None and re.fullmatch(r'(?:请|那|好|嗯)?(?:先)?(?:不用说了|别说了|不要说了|不用念了|别念了|不要念了|停止播报|停止说话|停止朗读)',compact):
+                    if self.operations:self.operations.mute_notifications(self.id)
+                    turn.system=True
+                    return
+                history = [{'role':m['role'], 'content':re.sub(r'(?:（回复被打断）)+$','',m['content'])}
                            for m in self.store.messages(self.id, limit=20)]
                 # Keep model context bounded even when the journal contains long messages.
                 budget, trimmed = 12000, []
@@ -938,6 +942,7 @@ class Session:
             with contextlib.suppress(Exception):await asyncio.wait_for(self.send(event),3)
 
     def queue_notification(self,record):
+        if record.get('delivery')!='pending':return
         if record['id'] not in self.notification_ids and not self.notifications.full():
             self.notification_ids.add(record['id']);self.notifications.put_nowait(record)
 
@@ -965,7 +970,7 @@ class Session:
                     # 进度提示本身就是一句话，不能再套一层前缀。
                     text=record['text']
                 elif kind in ('calendar','timer'):
-                    text=record['text'] if len(record['text'])<=120 else record['text'][:120]+'。完整结果可在网页查看。'
+                    text=record['text']
                 else:
                     text=phrasing.announcement(record['text'],record.get('status','completed'))
                 turn=self.turn=Turn(notification_id=record['id'])

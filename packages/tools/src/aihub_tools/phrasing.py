@@ -1,16 +1,7 @@
-"""Spoken lines that sound like a person, not a status machine.
+"""Contextual preparation lines and faithful speech for verified tool results.
 
-Three rules, all enforced here instead of at the call sites:
-
-* A long tool call gets one short, tool-specific line right away — never the
-  same template every turn. ``acknowledge`` rotates through a few variants.
-* A background result is introduced like something you just found out
-  ("刚查到，…"), never with a fixed label such as "后台任务结果：".
-* Failure and progress records are spoken as-is: adding a friendly lead to
-  "任务没能完成" only makes it worse.
-
-Rotation state is per process and per phrase family, so two consecutive turns
-never repeat the same sentence, while tests can still assert on the set.
+Preparation wording varies by tool. Finished results are spoken as supplied,
+without an invented lead, default truncation, or a redirect to the web page.
 """
 import re
 
@@ -27,8 +18,6 @@ _ACKS = {
 }
 _DEFAULT = ('我处理一下。', '稍等，我看下。', '好，我看看。', '这个我来查。')
 
-_LEADS = ('刚查到，', '对了，', '我查到了，', '有结果了，', '顺便说一下，')
-_TAILS = ('详细的就不念了，网页上能看到。', '剩下的在网页上。', '完整内容我放在网页里。')
 
 _counter = {}
 
@@ -73,14 +62,9 @@ def shorten(body, limit):
     return window.rstrip() + '。', True
 
 
-def announcement(text, status='completed', limit=120):
-    """Introduce a finished background result the way a person would."""
-    body, truncated = shorten((text or '').strip(), limit)
-    # Failures and interruptions already read as complete sentences; a cheerful
-    # lead-in would make them worse, so speak them unchanged.
-    if status != 'completed':
-        return body
-    spoken = _pick('lead', _LEADS) + body
-    if truncated:
-        spoken += _pick('tail', _TAILS)
-    return spoken
+def announcement(text, status='completed', limit=None):
+    """Speak the verified result completely unless an explicit limit is requested."""
+    body=(text or '').strip()
+    if limit is not None:
+        body,_=shorten(body,limit)
+    return body
