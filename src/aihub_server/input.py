@@ -57,6 +57,10 @@ class AudioInput:
                     break
                 recording = session.recording
                 if recording is not None:
+                    if recording.paused:
+                        self.segmenter.reset()
+                        self.buffer = b''
+                        continue
                     session.last_recording_packet_at = time.monotonic()
                     # Recording mode owns every packet: no ASR turn, no replies.
                     if recording_seen is not recording:

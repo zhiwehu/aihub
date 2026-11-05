@@ -39,9 +39,14 @@ async def recording_api(request):
     hub = request.app[HUB]
     manager = hub.recordings
     try:
-        if request.path == '/api/recordings':
+        if request.path.endswith('/recordings'):
             if request.method == 'GET':
                 items = manager.list()
+                for key in ('client_type', 'device_id', 'status'):
+                    if request.query.get(key):
+                        items = [item for item in items if item.get(key, 'unknown' if key == 'client_type' else None) == request.query[key]]
+                if request.query.get('after'):
+                    items = [item for item in items if item.get('started_at', 0) >= float(request.query['after'])]
                 session_id = request.query.get('session_id')
                 if session_id:
                     items = [item for item in items if item.get('session_id') == session_id]

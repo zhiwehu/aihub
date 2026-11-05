@@ -229,3 +229,20 @@ compose 里通过 `AIHUB_REX_RUNTIME=/data/rex-runtime-linux` 指过去，规划
 
 `context/` 与 `env/` 是生成物，已在 `.gitignore` 里；`env/models.env` 含 bearer
 令牌，权限 600。
+
+### Independent browser client
+
+Re-run `prepare-context.sh` and rebuild after upgrading: it copies the client as
+an explicit static artifact at `/app/client-web`, selected by `AIHUB_CLIENT_ROOT`.
+Compose publishes port 8768 on host loopback separately from the administrator
+console; `/demo/` uses dedicated client credentials created in the console. Its
+listener has no `/api/` management routes and never inherits `--local-console`.
+For remote browsers use HTTPS and reverse-proxy only client routes to port 8768.
+Do not expose the administrator listener. On Intel Linux with already deployed
+model services use `deploy/linux/README.md`; `model-host.sh` is the optional
+Mac-owned worker path, not an external model lifecycle manager.
+
+`model-host.sh stop` now requires a matching process identity record written at
+startup. It never reclaims a port by killing its listener. Legacy PID files alone
+are insufficient; inspect those older worker processes and stop them explicitly
+before switching launchers. The external HTTP Linux path does not use this script.

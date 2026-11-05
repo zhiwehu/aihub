@@ -15,6 +15,10 @@ class Store:
             PRAGMA synchronous=NORMAL;
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY, device_id TEXT NOT NULL, created REAL, updated REAL);
+            CREATE TABLE IF NOT EXISTS session_sources (
+                session_id TEXT PRIMARY KEY, client_type TEXT, client_instance TEXT);
+            CREATE TABLE IF NOT EXISTS client_credentials (
+                id TEXT PRIMARY KEY, name TEXT, digest TEXT UNIQUE, created REAL);
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY, session_id TEXT, turn_id TEXT, role TEXT,
                 content TEXT, status TEXT, created REAL);
@@ -29,6 +33,16 @@ class Store:
         self.db.execute('INSERT INTO sessions VALUES (?,?,?,?) ON CONFLICT(id) '
                         'DO UPDATE SET updated=excluded.updated', (sid, device, time.time(), time.time()))
         self.db.commit()
+
+    def source(self, sid, client_type, client_instance):
+        self.db.execute('INSERT OR IGNORE INTO session_sources VALUES (?,?,?)',
+                        (sid, client_type, client_instance))
+        self.db.commit()
+
+    def source_for(self, sid):
+        row = self.db.execute('SELECT client_type,client_instance FROM session_sources WHERE session_id=?',
+                              (sid,)).fetchone()
+        return dict(row) if row else {'client_type': 'unknown', 'client_instance': None}
 
     def owner(self, sid):
         row = self.db.execute('SELECT device_id FROM sessions WHERE id=?', (sid,)).fetchone()
@@ -45,9 +59,15 @@ class Store:
                                'ORDER BY id DESC LIMIT ?', (sid, before or 2**63-1, min(limit, 200)))
         return list(reversed([dict(r) for r in rows]))
 
-    def sessions(self, before=None):
-        return [dict(r) for r in self.db.execute('SELECT * FROM sessions WHERE updated<? '
-                'ORDER BY updated DESC LIMIT 100', (before or float('inf'),))]
+    def sessions(self, before=None, *, client_type=None, device_id=None, client_instance=None):
+        return [dict(r) for r in self.db.execute(
+            "SELECT s.*,coalesce(o.client_type,'unknown') AS client_type,o.client_instance "
+            "FROM sessions s LEFT JOIN session_sources o ON o.session_id=s.id "
+            "WHERE s.updated<? AND (? IS NULL OR coalesce(o.client_type,'unknown')=?) "
+            "AND (? IS NULL OR s.device_id=?) AND (? IS NULL OR o.client_instance=?) "
+            "ORDER BY s.updated DESC LIMIT 100",
+            (before or float('inf'), client_type, client_type, device_id, device_id,
+             client_instance, client_instance))]
 
     def event(self, event):
         payload = {k: v for k, v in event.items() if k not in ('session_id', 'turn_id', 'type')}

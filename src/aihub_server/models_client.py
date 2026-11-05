@@ -92,7 +92,8 @@ async def proxy(request):
     from aiohttp import web
 
     path = request.path
-    target = '/v1' + path[len('/api'):] if path.startswith('/api') else path
+    target = ('/v1' + path[len('/client/v1'):] if path.startswith('/client/v1/') else
+              '/v1' + path[len('/api'):] if path.startswith('/api') else path)
     query = request.query_string
     if query:
         target += '?' + query
@@ -108,7 +109,7 @@ async def proxy(request):
                                if key in response.headers}
                 return web.Response(body=raw, status=response.status,
                                     headers={**passthrough, 'Cache-Control': 'no-store'})
-    except (aiohttp.ClientError, TimeoutError, ValueError):
+    except (aiohttp.ClientError, TimeoutError, ValueError, ModelsUnavailable):
         return web.json_response(
             {'error': {'code': 'models_unreachable',
                        'message': '本机的模型服务没有运行，暂时无法处理这个请求。'}},

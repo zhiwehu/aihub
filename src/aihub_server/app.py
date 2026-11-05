@@ -24,6 +24,7 @@ from .pipeline import Pipeline, ProviderError
 from .recording import Recordings
 from .session import Session
 from .store import Store
+from .web_client import CLIENT_ONLY, authenticate, owns_session
 from .device_mcp import DeviceMCP
 from .services import ServiceManager, ServiceError
 from .connections import Connections, ConnectionError
@@ -301,7 +302,15 @@ async def device_gateway(request, ws):
         if not isinstance(hello, dict) or hello.get('type') != 'hello':
             raise ValueError('expected_hello')
         token = request.headers.get('Authorization', '').removeprefix('Bearer ') or hello.get('token','')
-        require_device_token = request.app.get(DEVICE_ONLY, False) or not admin(request)
+        client_id = None
+        if request.app.get(CLIENT_ONLY):
+            client_id = authenticate(hub, token)
+            if not client_id:
+                raise ValueError('unauthorized')
+            if hello.get('session_id') and not owns_session(hub, hello['session_id'], client_id):
+                raise ValueError('invalid_resume')
+            hello['device_id'] = 'web:' + client_id
+        require_device_token = not client_id and (request.app.get(DEVICE_ONLY, False) or not admin(request))
         if require_device_token and (not isinstance(token, str) or not secrets.compare_digest(token, hub.auth['device_token'])):
             raise ValueError('unauthorized')
         if not legacy and (type(hello.get('version')) is not int or hello['version'] != 1):
@@ -406,6 +415,8 @@ async def device_gateway(request, ws):
         session = Session(sid, device, hub.store, pipeline, send, publish=hub.publish,
                           wake_mode=mode, wake_phrase=cfg['wake']['phrase'], playback_ack=not legacy,
                           idle_seconds=cfg['wake']['idle_seconds'], recording_manager=hub.recordings)
+        session.client_instance = client_id
+        hub.store.source(sid, 'web' if client_id else 'device', client_id or device)
         session.device_listener = request.app.get(DEVICE_ONLY, False) and getattr(request,'protocol_name',None) != 'mqtt_udp'
         session.transport_socket = ws
         session.protocol = getattr(request, 'protocol_name', 'xiaozhi_websocket' if legacy else 'websocket_v1')
@@ -480,6 +491,11 @@ async def device_gateway(request, ws):
                     except ValueError as exc:
                         await session.emit('error', code=str(exc),
                                            message='录音模式启动失败，请检查磁盘空间后重试。')
+                elif kind in ('recording.pause', 'recording.resume'):
+                    try:
+                        await session.pause_recording(kind == 'recording.pause')
+                    except ValueError as exc:
+                        await session.emit('error', code=str(exc), message='当前录音状态不允许此操作。')
                 elif kind == 'recording.stop':
                     if session.recording is not None:
                         await session.stop_recording('client', speak=False)
@@ -598,7 +614,8 @@ async def api(request):
         if scope:config={k:v for k,v in config.items() if (k=='tools')==(scope=='tools')}
         return web.json_response({'config':config, 'applies_to':'new_connections'})
     if name == 'sessions':
-        return web.json_response(hub.store.sessions(float(request.query['before']) if 'before' in request.query else None))
+        return web.json_response(hub.store.sessions(float(request.query['before']) if 'before' in request.query else None,
+            client_type=request.query.get('client_type'), device_id=request.query.get('device_id')))
     if name == 'logs':
         return web.json_response(hub.store.events(request.query.get('session_id'),
             int(request.query['before']) if 'before' in request.query else None))
@@ -778,7 +795,7 @@ def create_device_app(hub):
     return app
 
 
-def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False, device_bind=None, local_console=False):
+def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port=8766, mqtt_config=None, skills_enabled=False, device_bind=None, local_console=False, client_host=None, client_port=8768):
     if device_host:
         address = ipaddress.ip_address(device_host)
         if not address.is_private or address.is_unspecified or address.is_multicast:
@@ -797,16 +814,28 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
     hub.connections = Connections(hub, mqtt_config, device_host, device_port, bind_host=device_bind)
     async def life(app):
         await hub.start()
+        client_runner = None
         try:
+            if client_host:
+                from .web_client import create_client_app
+                client_runner = web.AppRunner(create_client_app(hub))
+                await client_runner.setup()
+                await web.TCPSite(client_runner, client_host, client_port).start()
             await hub.connections.boot()
             yield
         finally:
+            if client_runner:
+                await client_runner.cleanup()
             await hub.connections.close()
             await hub.close()
     app.cleanup_ctx.append(life)
     app.router.add_get('/ws', gateway)
     app.router.add_get('/xiaozhi/v1/', gateway)
     app.router.add_route('*', '/xiaozhi/ota/{token}/', ota)
+    from .web_client import credentials
+    app.router.add_get('/api/client-credentials', credentials)
+    app.router.add_post('/api/client-credentials', credentials)
+    app.router.add_delete('/api/client-credentials/{identity}', credentials)
     app.router.add_get('/api/connections', connection_api)
     app.router.add_put('/api/connections/{transport:mqtt|websocket}', connection_api)
     app.router.add_post('/api/connections/{transport:mqtt|websocket}/{action}', connection_api)

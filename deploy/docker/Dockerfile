@@ -28,12 +28,14 @@ RUN pip install --index-url "$PIP_INDEX_URL" \
  && rm -rf /app/pkgs
 
 COPY web/ /app/web/
+COPY client-web/ /app/client-web/
 COPY assets/ /app/assets/
 
 ENV AIHUB_WEB_ROOT=/app/web \
+    AIHUB_CLIENT_ROOT=/app/client-web \
     VOICE_VAD_MODEL=/app/assets/silero_vad_v6.onnx
 
-EXPOSE 8765
+EXPOSE 8765 8768
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD ["python", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/api/status',timeout=2).status==200 else 1)"]

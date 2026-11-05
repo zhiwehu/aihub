@@ -219,3 +219,15 @@ PYTHONPATH=src python -m pytest tests -q
 其余 259 项通过（含 18 个子测试）。
 
 原创代码 MIT（见 [LICENSE](LICENSE)）。
+
+## Independent browser client and Linux HTTP deployment
+
+The management console stays on loopback port 8765. The CLI also starts a
+client-only listener on loopback port 8768 at `/demo/`; change it with
+`--client-host`/`--client-port`. Create a dedicated credential in the console's
+client connections page. Never use an administrator token in this client.
+
+See [client protocol and hosting](clients/web-demo/README.md) for scoped APIs,
+source ownership, pause/resume and exact-origin CORS, and
+[Linux deployment](deploy/linux/README.md) for external HTTP models, separate
+systemd services, backups, rollback and required hardware acceptance.

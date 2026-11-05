@@ -112,11 +112,13 @@ class ActiveRecording:
         self.session_id = session_id
         self.device_id = device_id
         self.trigger = trigger
+        self.source = {}
         self.path = manager.root/f'{self.id}.wav'
         self.started_at = time.time()
         self.started_mono = time.monotonic()
         self.samples = 0
         self.status = 'active'
+        self.paused = False
         self.reason = None
         self.ended_at = None
         self.confirming = False
@@ -156,7 +158,7 @@ class ActiveRecording:
 
     def write(self, pcm):
         """Append complete int16 samples; returns ``limit`` when the cap is hit."""
-        if self.status != 'active' or self.stopping or not pcm:
+        if self.status != 'active' or self.paused or self.stopping or not pcm:
             return None
         if len(pcm) % SAMPLE_WIDTH:
             pcm = pcm[:-1]
@@ -369,7 +371,9 @@ class ActiveRecording:
             'id': self.id,
             'session_id': self.session_id,
             'device_id': self.device_id,
+            **self.source,
             'status': self.status,
+            'paused': self.paused,
             'trigger': self.trigger,
             'reason': self.reason,
             'started_at': round(self.started_at, 3),
@@ -634,6 +638,8 @@ class Recordings:
         else:
             metadata.setdefault('clean_bytes', 0)
             metadata.setdefault('clean_duration_ms', 0)
+        metadata.setdefault('client_type', 'unknown')
+        metadata.setdefault('client_instance', None)
         return metadata
 
     def write_metadata(self, metadata, *, file=None):

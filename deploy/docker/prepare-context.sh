@@ -15,14 +15,14 @@ CTX="$HERE/context"
   echo "错误: 找不到 $ROOT/.venv。先在工作区根目录建好虚拟环境。" >&2; exit 1; }
 
 rm -rf "$CTX"
-mkdir -p "$CTX/pkgs" "$CTX/web" "$CTX/assets"
+mkdir -p "$CTX/pkgs" "$CTX/web" "$CTX/client-web" "$CTX/assets"
 cp "$HERE/Dockerfile" "$CTX/Dockerfile"   # context must be self-contained
 
 for pkg in aihub-common aihub-tools aihub-server; do
   src="$ROOT/$pkg"
   [ -d "$src/src" ] || { echo "错误: $src 缺少 src/" >&2; exit 1; }
   mkdir -p "$CTX/pkgs/$pkg"
-  cp "$src/pyproject.toml" "$CTX/pkgs/$pkg/"
+  cp "$src/pyproject.toml" "$src/README.md" "$src/LICENSE" "$CTX/pkgs/$pkg/"
   cp -R "$src/src" "$CTX/pkgs/$pkg/src"
   find "$CTX/pkgs/$pkg/src" -name '__pycache__' -type d -prune -exec rm -rf {} +
   echo "  + pkgs/$pkg"
@@ -31,6 +31,7 @@ done
 [ -f "$ROOT/aihub-web/public/index.html" ] || {
   echo "错误: 找不到 $ROOT/aihub-web/public/index.html" >&2; exit 1; }
 cp -R "$ROOT/aihub-web/public/." "$CTX/web/"
+cp -R "$ROOT/aihub-server/clients/web-demo/." "$CTX/client-web/"
 echo "  + web/ ($(find "$CTX/web" -type f | wc -l | tr -d ' ') 个文件)"
 
 # Silero VAD ONNX: the server borrows it from faster_whisper's assets, which are

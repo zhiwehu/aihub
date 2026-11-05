@@ -168,6 +168,9 @@ class Session:
             # The voice command's own turn is excluded: it is about to return.
             await self.interrupt('recording')
         recording = self.recording_manager.start(self.id, self.device_id, trigger)
+        if hasattr(self.store, 'source_for'):
+            recording.source = self.store.source_for(self.id)
+            recording.checkpoint()
         self.recording = recording
         self.recording_queue = asyncio.Queue(maxsize=8)
         self.recording_listen_after = time.monotonic()+.2
@@ -277,9 +280,20 @@ class Session:
                             message='录音写入失败，已停止并保存已录到的部分。')
         await self.stop_recording('storage_error', speak=False)
 
+    async def pause_recording(self, paused):
+        if self.recording is None or self.recording.stopping:
+            raise ValueError('recording_not_active')
+        if self.recording.paused == paused:
+            raise ValueError('invalid_recording_transition')
+        self.recording.paused = paused
+        self.last_recording_packet_at = time.monotonic()
+        self.recording.checkpoint()
+        await self.emit('recording.paused' if paused else 'recording.resumed',
+                        recording=self.recording.metadata())
+
     async def recording_tick(self):
         recording = self.recording
-        if recording is None or self.recording_manager is None:
+        if recording is None or self.recording_manager is None or recording.paused:
             return
         if recording.duration >= self.recording_manager.max_seconds:
             await self.stop_recording('limit', speak=True)

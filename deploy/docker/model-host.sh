@@ -80,6 +80,7 @@ start_one() {  # $1 = label, $2 = port, rest = command
   fi
   nohup "$@" >"$ENVDIR/$label.log" 2>&1 &
   echo $! > "$PIDS/$label.pid"
+  "$PY" -m aihub_server.workspace_process remember "$PIDS/$label.pid" aihub_models
   say "  $label: 启动中 pid $(cat "$PIDS/$label.pid")  :$port"
 }
 
@@ -140,13 +141,7 @@ do_stop() {
   for label in asr llm tts media; do
     pidfile="$PIDS/$label.pid"
     [ -f "$pidfile" ] || continue
-    pid="$(cat "$pidfile")"
-    kill -0 "$pid" 2>/dev/null && { kill "$pid" 2>/dev/null || true; say "  已停止 $label (pid $pid)"; }
-    rm -f "$pidfile"
-  done
-  for port in "$ASR_PORT" "$LLM_PORT" "$TTS_PORT" "$MEDIA_PORT"; do
-    pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)
-    [ -n "$pid" ] && { kill "$pid" 2>/dev/null || true; say "  回收端口 $port (pid $pid)"; }
+    "$PY" -m aihub_server.workspace_process stop "$pidfile" aihub_models
   done
   say "完成。"
 }

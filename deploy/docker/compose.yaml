@@ -12,6 +12,7 @@ services:
       - env/models.env
     environment:
       AIHUB_WEB_ROOT: /app/web
+      AIHUB_CLIENT_ROOT: /app/client-web
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
       # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
       # produces a Linux copy next to it and the planner worker loads this one.
@@ -24,6 +25,7 @@ services:
       # 127.0.0.1). The container still sees Docker's gateway as the peer, which
       # is why --local-console is set below.
       - "127.0.0.1:${AIHUB_CONTAINER_PORT:-8765}:8765"
+      - "127.0.0.1:${AIHUB_CLIENT_PORT:-8768}:8768"
       # 喵伴 device ingress. The server binds 0.0.0.0 inside the container
       # (--device-bind) and keeps advertising the LAN address from
       # data/connections.json, so devices see a reachable URL.
@@ -55,6 +57,10 @@ services:
       # Console is published on 127.0.0.1 only, so treat admin-API callers as
       # the local user instead of demanding a token on every request.
       - "--local-console"
+      - "--client-host"
+      - "0.0.0.0"
+      - "--client-port"
+      - "8768"
       # Listen on every container interface; the advertised address comes from
       # data/connections.json (e.g. 192.168.2.122) written by the console or by
       # native mode. OTA answers derive the ws:// URL from the Host header, so a

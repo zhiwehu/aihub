@@ -9,6 +9,8 @@ def main():
     parser = argparse.ArgumentParser(description='AIHub realtime voice server')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--client-host', default='127.0.0.1', help='Separate authenticated web-client listener')
+    parser.add_argument('--client-port', type=int, default=8768)
     parser.add_argument('--device-host', help='Specific private IP for an authenticated device-only listener')
     parser.add_argument('--device-bind', help='Listen address for the device listener (default: --device-host); 0.0.0.0 when running behind a container port mapping')
     parser.add_argument('--device-port', type=int, default=8766)
@@ -23,7 +25,7 @@ def main():
     args = parser.parse_args()
     app = create_app(args.data, device_host=args.device_host, device_port=args.device_port,
                      mqtt_config=args.mqtt_config, device_bind=args.device_bind,
-                     local_console=args.local_console)
+                     local_console=args.local_console, client_host=args.client_host, client_port=args.client_port)
     if args.print_device_token or args.print_admin_token:
         print(app[HUB].auth['device_token' if args.print_device_token else 'admin_token'])
         app[HUB].store.close()
