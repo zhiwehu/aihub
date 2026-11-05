@@ -71,12 +71,39 @@ class ServiceManager:
                     return value
         except (aiohttp.ClientError,TimeoutError,ValueError):return None
 
+    async def _external_health(self, cfg):
+        # Read-only protocol probe, never submit inference or require a PID.
+        key = os.environ.get(cfg.get('key_env', ''), '')
+        headers = {'Authorization': 'Bearer ' + key} if key else {}
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=.6)) as client:
+                async with client.get(cfg['url'].rstrip('/') + '/models', headers=headers,
+                                      allow_redirects=False) as response:
+                    if response.status in (404, 405):
+                        return 'unknown'  # Backend does not implement model discovery.
+                    if response.status != 200:
+                        return 'unavailable'
+                    raw = await response.content.read(65537)
+                    if len(raw) > 65536:
+                        return 'unknown'
+                    data = json.loads(raw)
+                    models = data.get('data', [])
+                    if not isinstance(models, list):
+                        return 'unknown'
+                    return 'available' if any(isinstance(m, dict) and m.get('id') == cfg['model']
+                                               for m in models) else 'model_missing'
+        except (aiohttp.ClientError, OSError, TimeoutError):
+            return 'unavailable'
+        except (ValueError, AttributeError):
+            return 'unknown'
+
     async def status(self,kind):
         if kind not in KINDS:raise ServiceError('invalid_service')
         cfg=self.config()[kind];provider=cfg['provider']
         if provider!='builtin':
             return dict(kind=kind,managed=False,provider=provider,model=cfg['model'],
-                state={'http':'external','mlx':'embedded','macos':'system'}.get(provider,'external'))
+                state={'http':'external','mlx':'embedded','macos':'system'}.get(provider,'external'),
+                health=await self._external_health(cfg) if provider=='http' else 'system')
         record=self._record(kind);process=self._owned(kind,record)
         if not process:
             if record and kind not in self.errors:

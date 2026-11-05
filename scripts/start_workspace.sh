@@ -21,7 +21,7 @@ MEDIA_PIDFILE="$DATA/media.pid"
 LOGFILE="$DATA/server.log"
 MEDIA_LOG="$DATA/media.log"
 TOKENFILE="$DATA/.models-token"
-ASR_MODEL="${AIHUB_ASR_MODEL:-mlx-community/Qwen3-ASR-0.6B-8bit}"
+ASR_MODEL="${AIHUB_MEDIA_ASR_MODEL:-${AIHUB_ASR_MODEL:-mlx-community/Qwen3-ASR-0.6B-8bit}}"
 TTS_MODE="${AIHUB_TTS:-keep}"
 Qwen_TTS_MODEL="${AIHUB_TTS_MODEL:-mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit}"
 Qwen_TTS_VOICE="${AIHUB_TTS_VOICE:-Serena}"
@@ -85,6 +85,10 @@ port_busy() { [ -n "$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1)
 http_ok() { curl -s -o /dev/null -m 3 "http://127.0.0.1:$1$2" 2>/dev/null; }
 
 lan_ip() {
+  if command -v ip >/dev/null 2>&1; then
+    ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}'
+    return
+  fi
   for iface in en0 en1 en2; do
     ip=$(ipconfig getifaddr "$iface" 2>/dev/null || true)
     [ -n "$ip" ] && { echo "$ip"; return; }
@@ -106,25 +110,11 @@ stop_stack() {
   for kind in asr llm tts; do
     curl -s -o /dev/null -m 6 -X POST "http://127.0.0.1:$PORT/api/services/$kind/stop" 2>/dev/null || true
   done
-  sleep 1
-  for p in 8781 8782 8767; do
-    pid=$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
-  done
-
+  "$PY" -m aihub_server.workspace_process workers "$DATA"
   say "停止后处理服务…"
-  pid=$(read_pid "$MEDIA_PIDFILE")
-  if alive "$pid"; then kill "$pid" 2>/dev/null || true; sleep 1; fi
-  rm -f "$MEDIA_PIDFILE"
-
+  "$PY" -m aihub_server.workspace_process stop "$MEDIA_PIDFILE" aihub_models
   say "停止服务端…"
-  pid=$(read_pid "$PIDFILE")
-  if alive "$pid"; then
-    kill "$pid" 2>/dev/null || true
-    for _ in $(seq 1 20); do alive "$pid" || break; sleep .2; done
-    alive "$pid" && kill -9 "$pid" 2>/dev/null || true
-  fi
-  rm -f "$PIDFILE"
+  "$PY" -m aihub_server.workspace_process stop "$PIDFILE" aihub_server
   say "已停止。"
 }
 
@@ -173,16 +163,8 @@ if alive "$pid"; then
   exit 0
 fi
 if port_busy "$PORT"; then
-  fail "端口 $PORT 已被占用（可能是旧后端）。先停掉它:
-  cd ~/ai/miaoban/realtime_backend && ./start.sh --stop
-  lsof -ti:8781,8782,8767 | xargs kill"
+  fail "控制台端口 $PORT 已被占用，请检查占用进程；不会停止外部服务。"
 fi
-for p in 8781 8782 8767; do
-  if port_busy "$p"; then
-    fail "模型端口 $p 被占用。旧后端的 worker 通常不会随控制台退出，需要单独停:
-  lsof -ti:8781,8782,8767 | xargs kill"
-  fi
-done
 
 mkdir -p "$DATA"
 chmod 700 "$DATA" 2>/dev/null || true
@@ -206,11 +188,13 @@ say "启动后处理服务 (127.0.0.1:$MODELS_PORT)…"
 nohup "$PY" -m aihub_models serve --data "$DATA" --port "$MODELS_PORT" \
   --token "$TOKEN" --asr-model "$ASR_MODEL" >"$MEDIA_LOG" 2>&1 &
 echo $! > "$MEDIA_PIDFILE"
+"$PY" -m aihub_server.workspace_process remember "$MEDIA_PIDFILE" aihub_models
 
 say "启动服务端 (http://127.0.0.1:$PORT)…"
 # shellcheck disable=SC2086
 nohup "$PY" -m aihub_server --data "$DATA" --port "$PORT" $DEVICE_ARGS >>"$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
+"$PY" -m aihub_server.workspace_process remember "$PIDFILE" aihub_server
 
 for _ in $(seq 1 40); do
   http_ok "$PORT" /api/status && break

@@ -1,0 +1,16 @@
+[Unit]
+Description=AIHub server
+After=network.target aihub-processing.service
+
+[Service]
+Type=simple
+User=aihub
+WorkingDirectory=/opt/aihub
+EnvironmentFile=/etc/aihub/runtime.env
+ExecStart=/opt/aihub/.venv/bin/python -m aihub_server --data /var/lib/aihub --port 8765
+Restart=on-failure
+TimeoutStopSec=20
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

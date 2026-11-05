@@ -81,3 +81,17 @@ class ServiceManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.manager.status('llm'))['state'],'failed')
         await self.manager.action('llm','start')
         self.assertEqual((await self.running('llm'))['model'],'replacement')
+
+    async def test_external_model_probe_reports_reachability_without_owning_it(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestServer
+        async def models(request):
+            return web.json_response({'data': [{'id': self.cfg['asr']['model']}]})
+        app = web.Application()
+        app.router.add_get('/v1/models', models)
+        async with TestServer(app) as server:
+            self.cfg['asr'].update(provider='http', url=str(server.make_url('/v1')))
+            value = await self.manager.status('asr')
+            self.assertFalse(value['managed'])
+            self.assertEqual(value['state'], 'external')
+            self.assertEqual(value['health'], 'available')
