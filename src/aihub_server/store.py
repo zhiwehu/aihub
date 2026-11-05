@@ -17,6 +17,8 @@ class Store:
                 id TEXT PRIMARY KEY, device_id TEXT NOT NULL, created REAL, updated REAL);
             CREATE TABLE IF NOT EXISTS session_sources (
                 session_id TEXT PRIMARY KEY, client_type TEXT, client_instance TEXT);
+            CREATE TABLE IF NOT EXISTS device_credentials (
+                id TEXT PRIMARY KEY, device_id TEXT, digest TEXT UNIQUE, created REAL);
             CREATE TABLE IF NOT EXISTS client_credentials (
                 id TEXT PRIMARY KEY, name TEXT, digest TEXT UNIQUE, created REAL);
             CREATE TABLE IF NOT EXISTS messages (

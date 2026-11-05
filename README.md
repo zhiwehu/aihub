@@ -231,3 +231,7 @@ See [client protocol and hosting](clients/web-demo/README.md) for scoped APIs,
 source ownership, pause/resume and exact-origin CORS, and
 [Linux deployment](deploy/linux/README.md) for external HTTP models, separate
 systemd services, backups, rollback and required hardware acceptance.
+
+[Per-device credentials and OTA](docs/device-credentials.md) documents the optional
+authenticated hardware identity extension, new USB provisioning, revocation and
+legacy-compatible rollout/rollback.

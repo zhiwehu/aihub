@@ -24,6 +24,7 @@ from .pipeline import Pipeline, ProviderError
 from .recording import Recordings
 from .session import Session
 from .store import Store
+from .device_credentials import authenticate as authenticate_device
 from .web_client import CLIENT_ONLY, CLIENT_SOCKETS, authenticate, owns_session
 from .device_mcp import DeviceMCP
 from .services import ServiceManager, ServiceError
@@ -309,6 +310,7 @@ async def device_gateway(request, ws):
             raise ValueError('expected_hello')
         token = request.headers.get('Authorization', '').removeprefix('Bearer ') or hello.get('token','')
         client_id = None
+        bound = authenticate_device(hub, token) if not request.app.get(CLIENT_ONLY) else None
         if request.app.get(CLIENT_ONLY):
             client_id = authenticate(hub, token)
             if not client_id:
@@ -316,12 +318,12 @@ async def device_gateway(request, ws):
             if hello.get('session_id') and not owns_session(hub, hello['session_id'], client_id):
                 raise ValueError('invalid_resume')
             hello['device_id'] = 'web:' + client_id
-        require_device_token = not client_id and (request.app.get(DEVICE_ONLY, False) or not admin(request))
+        require_device_token = not client_id and not bound and (request.app.get(DEVICE_ONLY, False) or not admin(request))
         if require_device_token and (not isinstance(token, str) or not secrets.compare_digest(token, hub.auth['device_token'])):
             raise ValueError('unauthorized')
         if not legacy and (type(hello.get('version')) is not int or hello['version'] != 1):
             raise ValueError('unsupported_version')
-        device = hello.get('device_id') or request.headers.get('Device-Id') or 'esp32'
+        device = bound['device_id'] if bound else hello.get('device_id') or request.headers.get('Device-Id') or 'esp32'
         if not isinstance(device, str) or not re.fullmatch(r'[\w.:-]{1,80}', device):
             raise ValueError('invalid_device_id')
         audio = hello.get('audio', hello.get('audio_params', {}))
@@ -340,6 +342,18 @@ async def device_gateway(request, ws):
             raise ValueError('invalid_wake_mode')
         if mode == 'backend' and capabilities.get('continuous_audio') is not True:
             raise ValueError('continuous_audio_required')
+        instance = client_id or ('ws-device:' + device if bound else
+                   'mqtt:' + device if getattr(request, 'protocol_name', None) == 'mqtt_udp' else 'legacy-ws-group')
+        if hello.get('session_id'):
+            existing = hub.store.source_for(hello['session_id']) if isinstance(hello['session_id'], str) else {}
+            previous = existing.get('client_instance')
+            # Legacy sessions remain resumable with their original resume secret;
+            # bound-device and browser sessions also require the same principal.
+            protected = existing.get('client_type') == 'web' or str(previous).startswith(('ws-device:', 'mqtt:'))
+            if protected and previous != instance:
+                raise ValueError('invalid_resume')
+            if bound and previous != instance:
+                raise ValueError('invalid_resume')
         sid, resume = hub.resume(hello)
         if len(hub.sessions) >= 8:
             raise ValueError('capacity_reached')
@@ -422,7 +436,8 @@ async def device_gateway(request, ws):
                           wake_mode=mode, wake_phrase=cfg['wake']['phrase'], playback_ack=not legacy,
                           idle_seconds=cfg['wake']['idle_seconds'], recording_manager=hub.recordings)
         session.client_instance = client_id
-        hub.store.source(sid, 'web' if client_id else 'device', client_id or device)
+        session.device_credential_id = bound['id'] if bound else None
+        hub.store.source(sid, 'web' if client_id else 'device', instance)
         session.device_listener = request.app.get(DEVICE_ONLY, False) and getattr(request,'protocol_name',None) != 'mqtt_udp'
         session.transport_socket = ws
         session.protocol = getattr(request, 'protocol_name', 'xiaozhi_websocket' if legacy else 'websocket_v1')
@@ -771,11 +786,12 @@ async def events(request):
 
 async def ota(request):
     hub = request.app[HUB]
-    if not secrets.compare_digest(request.match_info['token'], hub.auth['device_token']):
+    if not (secrets.compare_digest(request.match_info['token'], hub.auth['device_token'])
+            or authenticate_device(hub, request.match_info['token'])):
         raise web.HTTPNotFound()
     scheme = 'wss' if request.secure else 'ws'
     return web.json_response(dict(websocket=dict(url=f'{scheme}://{request.host}/xiaozhi/v1/',
-               token=hub.auth['device_token'], version=1)))
+               token=request.match_info['token'], version=1)))
 
 
 async def mqtt_ota(request):
@@ -838,6 +854,10 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
     app.router.add_get('/ws', gateway)
     app.router.add_get('/xiaozhi/v1/', gateway)
     app.router.add_route('*', '/xiaozhi/ota/{token}/', ota)
+    from .device_credentials import api as device_credentials_api
+    app.router.add_get('/api/device-credentials', device_credentials_api)
+    app.router.add_post('/api/device-credentials', device_credentials_api)
+    app.router.add_delete('/api/device-credentials/{identity}', device_credentials_api)
     from .web_client import credentials
     app.router.add_get('/api/client-credentials', credentials)
     app.router.add_post('/api/client-credentials', credentials)

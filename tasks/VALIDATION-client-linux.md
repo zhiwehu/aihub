@@ -36,10 +36,27 @@ permission. It does not validate real ASR/TTS quality or audio-device routing.
 No Intel machine, Linux systemd activation, Docker image rebuild, actual ESP32
 recording controls, long-recording processing or latency/memory measurement was
 verified. The legacy shared device token cannot prove an individual hardware ID;
-this existing limitation is documented rather than presented as verified identity.
+new dedicated WS credentials now bind the configured device identity server-side,
+while existing devices require explicit reprovisioning.
 The browser client has dedicated server-issued identity and record isolation.
 
 Client-listener shutdown explicitly closes authenticated and pending WebSockets;
 its regression test passes within a one-second deadline. Final server suite is
 300 passed + 18 subtests, with the same single baseline wake-phrase failure.
 Admin Web delivery commit: 7c08083. No live cutover was performed.
+
+## Approved per-device extension
+
+The user explicitly approved device WS credentials and OTA authorization after the
+initial browser increment. The device registry stores only token digests and
+administrator-bound device IDs. Browser and device credentials are disjoint.
+New USB provisioning submits its inspected MAC; legacy requests remain compatible.
+Tests cover binding, cross-device/shared-token resume rejection, revocation,
+credential replacement, OTA isolation and preparation compatibility. Chrome on an
+isolated data directory verified creating, listing and revoking a device credential.
+No physical device was flashed or reconfigured. See docs/device-credentials.md for
+credential replacement, the 100-credential bound and rollback requirements.
+
+Final device-extension regression: server 304 passed + 18 subtests, with only the
+unchanged baseline wake-phrase failure; device credential integration tests 4 passed.
+Firmware 66 Node checks + 9 C++ logic checks and Web 11 Node checks passed.

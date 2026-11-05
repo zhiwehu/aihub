@@ -57,5 +57,5 @@ Old recordings without source metadata remain administrator-readable and are
 labelled unknown; they are not assigned to new clients by guessing device names.
 The shared legacy ESP32 token authenticates the device group, not an individual
 hardware identity: existing device IDs remain device-declared labels. Use the
-existing per-device MQTT credentials for stronger hardware attribution. A general
-per-device WS credential migration is outside this browser credential increment.
+existing per-device MQTT credentials for stronger hardware attribution. Per-device WS credentials are now available for new provisioning; see
+../../docs/device-credentials.md. Existing shared-token devices are not silently migrated.

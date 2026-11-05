@@ -53,7 +53,10 @@ async def prepare(request):
     hub=request.app[HUB]
     if request.match_info['client']!='echoear-s3':raise web.HTTPNotFound()
     body=await request.json()
-    if not isinstance(body,dict) or set(body)-{'host'}:raise ValueError('invalid_setup_request')
+    if not isinstance(body,dict) or set(body)-{'host','device_id'}:raise ValueError('invalid_setup_request')
+    if 'device_id' in body:
+        from .device_credentials import device_id
+        device_id(body['device_id'])
     choices=interfaces();connections=hub.connections
     if not choices and deployment()=='docker' and connections.device_host:
         # The container cannot enumerate the host's LAN, but the address it
@@ -89,8 +92,16 @@ async def prepare(request):
         except ConnectionError as exc:
             message='已有喵伴正在使用另一个网络，请先断开它再切换。' if str(exc)=='listener_on_other_network' else '设备连接服务启动失败，请检查当前网络和监听端口。'
             return web.json_response({'error':{'code':str(exc),'message':message}},status=409)
-        token=hub.auth['device_token'];port=connections.device_port
+        credential = None
+        if 'device_id' in body:
+            from .device_credentials import issue
+            try:
+                credential = issue(hub, body['device_id'])
+            except ValueError as exc:
+                return web.json_response({'error': {'code': str(exc), 'message': '设备凭证数量已满，请先撤销不再使用的凭证。'}}, status=409)
+        token=credential['token'] if credential else hub.auth['device_token'];port=connections.device_port
         return web.json_response({'host':host,'port':port,
+            **({'device_id':credential['device_id'],'credential_id':credential['id']} if credential else {}),
             'websocket':{'url':f'ws://{host}:{port}/xiaozhi/v1/','token':token,'version':1},
             'ota_url':f'http://{host}:{port}/xiaozhi/ota/{token}/'},headers={'Cache-Control':'no-store'})
 
