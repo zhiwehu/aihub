@@ -186,6 +186,15 @@
             <label id="client-access-secret" hidden>客户端凭证（仅显示一次）<input id="client-access-token" readonly type="text" autocomplete="off"></label>
             <button id="client-access-refresh" type="button">刷新凭证列表</button><div id="client-access-list"></div>
           </article>
+          <article class="panel">
+            <h2>设备专用凭证</h2>
+            <p>新 USB 配网会自动绑定检查到的设备 MAC。手动接入可在这里创建凭证；旧设备的共享令牌继续兼容。</p>
+            <form id="device-access-form"><label>设备 ID / MAC<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="primary">创建设备凭证</button></form>
+            <p id="device-access-result" role="status"></p>
+            <label id="device-access-secret" hidden>设备凭证（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
+            <label id="device-access-ota-wrap" hidden>OTA 地址<input id="device-access-ota" readonly autocomplete="off"></label>
+            <button id="device-access-refresh" type="button">刷新设备凭证</button><div id="device-access-list"></div>
+          </article>
           <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
           <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
           <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>

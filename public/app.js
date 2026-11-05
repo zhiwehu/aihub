@@ -890,7 +890,7 @@ function recordingOrigin(recording) {
 }
 function recordingSource(recording) {
   if (recordingOrigin(recording) === 'web') return '网页客户端 · ' + (recording.client_instance || '');
-  if (recordingOrigin(recording) === 'device') return '设备 · ' + (recording.device_id || '');
+  if (recordingOrigin(recording) === 'device') return (recording.client_instance === 'legacy-ws-group' ? '设备（共享凭证） · ' : '设备 · ') + (recording.device_id || '');
   return '历史记录 / 来源未知';
 }
 function detailDate(seconds) {

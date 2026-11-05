@@ -140,3 +140,9 @@ device entries link to those same global lists with the device filter selected.
 Recordings also support status/start-time filters. Old records are explicitly
 unknown and are not attributed using display-name guesses. External HTTP model
 status reports a read-only discovery probe without offering process controls.
+
+The client connections page also manages per-device WebSocket credentials. New
+USB setup binds the inspected MAC; manual creation shows a one-time token and,
+when the device listener is running, its OTA URL. Revoking a credential closes
+its active sockets. Existing shared-token devices keep their compatibility path;
+reprovision them explicitly to obtain a server-bound identity.
