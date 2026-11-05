@@ -1,0 +1,78 @@
+name: aihub
+
+services:
+  aihub-server:
+    build:
+      # prepare-context.sh assembles this: sibling packages + web + VAD model.
+      context: context
+    image: aihub-server:local
+    container_name: aihub-server
+    # Bearer tokens for the native model workers (see model-host.sh).
+    env_file:
+      - env/models.env
+    environment:
+      AIHUB_WEB_ROOT: /app/web
+      AIHUB_CLIENT_ROOT: /app/client-web
+      # Origin compatibility only; client authentication never trusts the bridge.
+      # Valid only with the client port published on host loopback below.
+      AIHUB_CLIENT_LOOPBACK_PROXY: "1"
+      VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
+      # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
+      # produces a Linux copy next to it and the planner worker loads this one.
+      AIHUB_REX_RUNTIME: /data/rex-runtime-linux
+      # The USB provisioning assistant is a module from aihub-firmware; the
+      # console imports it from /firmware, so the directory has to be published.
+      AIHUB_FIRMWARE_ROOT: /firmware
+    ports:
+      # Console, loopback only — same reach as native mode (start.sh binds
+      # 127.0.0.1). The container still sees Docker's gateway as the peer, which
+      # is why --local-console is set below.
+      - "127.0.0.1:${AIHUB_CONTAINER_PORT:-8765}:8765"
+      - "127.0.0.1:${AIHUB_CLIENT_PORT:-8768}:8768"
+      # 喵伴 device ingress. The server binds 0.0.0.0 inside the container
+      # (--device-bind) and keeps advertising the LAN address from
+      # data/connections.json, so devices see a reachable URL.
+      - "8766:8766"
+    volumes:
+      # Same data directory the native model tier reads: recordings, history,
+      # tokens and settings.json are shared.
+      - "${AIHUB_DATA:-../../../data}:/data"
+      # Music and file-organiser folders are bind-mounted at the *same absolute
+      # path* inside the container, so the host paths saved in settings.json keep
+      # working in both deployment modes. configure.sh derives these from the
+      # live config and writes them to .env; export them to override.
+      - "${AIHUB_MUSIC_DIR}:/${AIHUB_MUSIC_DIR}:ro"
+      - "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"
+      # Web Serial flashing assistant (aihub-firmware/flash), read-only.
+      - "${AIHUB_FIRMWARE_DIR:-../../../aihub-firmware/flash}:/firmware:ro"
+    extra_hosts:
+      # Docker Desktop resolves this already; host-gateway keeps it working if
+      # the image is ever run under a plain Linux engine.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    command:
+      - "--data"
+      - "/data"
+      - "--port"
+      - "8765"
+      - "--host"
+      - "0.0.0.0"
+      # Console is published on 127.0.0.1 only, so treat admin-API callers as
+      # the local user instead of demanding a token on every request.
+      - "--local-console"
+      - "--client-host"
+      - "0.0.0.0"
+      - "--client-port"
+      - "8768"
+      # Listen on every container interface; the advertised address comes from
+      # data/connections.json (e.g. 192.168.2.122) written by the console or by
+      # native mode. OTA answers derive the ws:// URL from the Host header, so a
+      # device that reaches us on <lan-ip>:8766 is told <lan-ip>:8766.
+      - "--device-bind"
+      - "0.0.0.0"
+      - "--device-port"
+      - "8766"
+      # What devices are told to dial. configure.sh detects the host's LAN
+      # address; without it the server would only see the container's bridge IP.
+      - "--device-host"
+      - "${AIHUB_DEVICE_HOST}"

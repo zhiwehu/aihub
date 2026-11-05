@@ -1,0 +1,16 @@
+[Unit]
+Description=AIHub recording processing
+After=network.target
+
+[Service]
+Type=simple
+User=aihub
+WorkingDirectory=/opt/aihub
+EnvironmentFile=/etc/aihub/runtime.env
+ExecStart=/opt/aihub/.venv/bin/python -m aihub_models serve --data /var/lib/aihub --port 8790
+Restart=on-failure
+TimeoutStopSec=20
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

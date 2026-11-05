@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>声桥 · 网页客户端</title><link rel="stylesheet" href="/demo/assets/style.css"><script type="module" src="/demo/assets/client.js"></script></head>
+<body><main>
+<header><p class="eyebrow">VOICEHUB / WEB CLIENT</p><h1>让对话，自然发生。</h1><p>文字、声音与会议记录，一个独立的连接入口。</p></header>
+<section class="panel" aria-labelledby="connection-title"><h2 id="connection-title">连接服务</h2>
+<form id="connection"><label>服务端地址<input id="server" type="url" required></label><label>客户端凭证<input id="token" type="password" autocomplete="off" required placeholder="由管理员创建的客户端凭证"></label><button>连接</button><button id="disconnect" type="button" disabled>断开</button></form><p id="status" role="status" aria-live="polite">尚未连接</p><p id="error" role="alert"></p></section>
+<div class="columns"><section class="panel"><h2>对话</h2><div id="messages" role="log" aria-live="polite"></div><p id="partial"></p><form id="text-form"><label class="grow">发送文字<input id="text" maxlength="4000" required></label><button id="send" disabled>发送</button></form><div class="actions"><button id="mic" disabled>开启语音</button><button id="interrupt" disabled>打断回复</button></div><p class="hint">语音需要 localhost 或 HTTPS。聊天音频不会自动保存为会议录音。</p></section>
+<section class="panel"><h2>会议录音</h2><p id="recording-state" role="status">尚未开始</p><div class="actions"><button id="start-recording" disabled>开始录音</button><button id="pause-recording" disabled>暂停</button><button id="stop-recording" disabled>结束并保存</button></div><p class="hint">只有明确开始录音才会保存音频；暂停期间不写入声音。</p><h3>我的录音</h3><button id="refresh-recordings" disabled>刷新</button><div id="recordings"></div></section></div>
+<section class="panel" id="detail" hidden><h2 id="detail-title">录音详情</h2><audio id="player" controls></audio><pre id="transcript"></pre><label>纪要模板<select id="templates"></select></label><button id="minutes-generate">生成纪要</button><button id="minutes-refresh">刷新纪要</button><pre id="minutes"></pre></section>
+</main></body></html>

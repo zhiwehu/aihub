@@ -1,0 +1,374 @@
+import asyncio
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import numpy as np
+
+from aihub_server.input import AudioInput
+from aihub_server.recording import Recordings
+from aihub_server.session import Session
+from aihub_common import SpeakerTracker
+from aihub_server.store import Store
+
+
+async def wait_for(predicate, timeout=2):
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(.01)
+
+
+class Pipeline:
+    def __init__(self):
+        self.chat_called = False
+        self.spoken = []
+        self.transcripts = []
+
+    async def chat(self, history):
+        self.chat_called = True
+        yield '录音模式里不应该出现的回复。'
+
+    async def speech(self, text):
+        self.spoken.append(text)
+        yield b'\0\0'*320
+
+    async def transcribe(self, pcm):
+        return self.transcripts.pop(0) if self.transcripts else '无关内容'
+
+
+class FakeSpeakerEngine:
+    def __init__(self, vectors):
+        self.vectors = list(vectors)
+        self.calls = 0
+
+    def embed(self, pcm):
+        vector = self.vectors[self.calls]
+        self.calls += 1
+        return np.asarray(vector, dtype=np.float32)
+
+
+class FailingSpeakerEngine:
+    def __init__(self):
+        self.calls = 0
+
+    def embed(self, pcm):
+        self.calls += 1
+        raise RuntimeError('model unavailable')
+
+
+class RecordingSessionTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.store = Store(root/'test.db')
+        self.pipeline = Pipeline()
+        self.manager = Recordings(root/'data')
+        self.events = []
+
+        async def send(event):
+            self.events.append(event)
+
+        self.session = Session('recording-one', 'browser', self.store, self.pipeline, send,
+                               playback_ack=False, recording_manager=self.manager)
+
+    async def asyncTearDown(self):
+        await self.session.close()
+        self.manager.close()
+        self.store.close()
+        self.tmp.cleanup()
+
+    async def test_voice_start_switches_to_recording_without_chat_or_journal(self):
+        await self.session.submit('开始录音模式')
+        await asyncio.wait_for(self.session.turn.task, 2)
+        self.assertIsNotNone(self.session.recording)
+        self.assertEqual(self.session.state, 'recording')
+        self.assertFalse(self.pipeline.chat_called)
+        self.assertEqual(self.store.messages(self.session.id), [])
+        self.assertEqual(self.pipeline.spoken, [])
+        self.assertTrue(any(event['type'] == 'recording.started' for event in self.events))
+        self.assertFalse(any(event['type'] in ('message.user', 'transcript.final', 'reply.final')
+                             for event in self.events))
+
+    async def test_transcribed_start_command_uses_the_voice_path(self):
+        self.pipeline.transcripts = ['开始录音模式']
+        await self.session.submit(pcm=np.zeros(1600, dtype=np.float32))
+        await asyncio.wait_for(self.session.turn.task, 2)
+        self.assertIsNotNone(self.session.recording)
+        self.assertEqual(self.session.recording.trigger, 'voice')
+        self.assertFalse(self.pipeline.chat_called)
+        self.assertEqual(self.store.messages(self.session.id), [])
+
+    async def test_duration_tick_stops_and_speaks_a_saved_notice(self):
+        await self.session.start_recording('web')
+        self.manager.max_seconds = .01
+        self.session.recording.write(b'\0\0'*200)
+        await self.session.recording_tick()
+        self.assertIsNone(self.session.recording)
+        self.assertEqual(self.session.state, 'standby')
+        self.assertEqual(self.pipeline.spoken, [])
+        metadata = self.manager.list()[0]
+        self.assertEqual(metadata['reason'], 'limit')
+
+    async def test_input_timeout_finalizes_a_half_open_recording(self):
+        await self.session.start_recording('web')
+        self.session.recording.write(b'\0\0'*1600)
+        self.session.last_recording_packet_at = time.monotonic()-301
+        await self.session.recording_tick()
+        self.assertIsNone(self.session.recording)
+        self.assertEqual(self.session.state, 'standby')
+        metadata = self.manager.list()[0]
+        self.assertEqual(metadata['reason'], 'input_timeout')
+        self.assertTrue(self.manager.audio_path(metadata['id']).is_file())
+
+    async def test_web_stop_finalizes_the_file_and_returns_to_listening(self):
+        recording = await self.session.start_recording('web')
+        recording.write(b'\x01\x00'*1600)
+        metadata = await self.session.stop_recording('web')
+        self.assertEqual(metadata['id'], recording.id)
+        self.assertIsNone(self.session.recording)
+        self.assertEqual(self.session.state, 'standby')
+        self.assertTrue(self.manager.audio_path(recording.id).is_file())
+        self.assertTrue(any(event['type'] == 'recording.stopped' for event in self.events))
+        self.assertFalse(self.pipeline.chat_called)
+
+    async def test_voice_stop_needs_a_second_confirmation(self):
+        await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+        with patch.object(self.session, '_speak_recording_prompt', new=AsyncMock()):
+            self.pipeline.transcripts = ['停止录音模式']
+            self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+            await wait_for(lambda: self.session.recording.confirming)
+            self.assertIsNotNone(self.session.recording)
+            self.assertTrue(any(event['type'] == 'recording.confirming' for event in self.events))
+
+            self.pipeline.transcripts = ['确认停止']
+            self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+            await wait_for(lambda: self.session.recording is None
+                           and self.session.state == 'standby')
+        self.assertEqual(self.session.state, 'standby')
+        self.assertTrue(any(event['type'] == 'recording.stopped' for event in self.events))
+        self.assertFalse(any('录音已停止' in text for text in self.pipeline.spoken))
+        transcript = self.manager.transcript(self.manager.list()[0]['id'])
+        self.assertEqual(transcript['count'], 0)  # control phrases are not dictation
+
+    async def test_ordinary_speech_during_recording_is_not_transcribed_into_a_turn(self):
+        await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+        self.pipeline.transcripts = ['把会议室灯关一下']
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+        await wait_for(lambda: any(event['type'] == 'recording.transcript'
+                                   for event in self.events))
+        self.assertIsNotNone(self.session.recording)
+        self.assertIsNone(self.session.turn)
+        self.assertFalse(self.pipeline.chat_called)
+        self.assertFalse(any(event['type'] == 'message.user' for event in self.events))
+        event = next(event for event in self.events if event['type'] == 'recording.transcript')
+        self.assertEqual(event['line'], 1)
+        self.assertEqual(event['text'], '把会议室灯关一下')
+        self.assertEqual(event['stamp'], '00:00')
+        transcript = self.manager.transcript(self.session.recording.id)
+        self.assertEqual(transcript['text'], '[00:00] 把会议室灯关一下')
+        self.assertEqual(transcript['lines'][0]['stamp'], '00:00')
+        self.assertEqual(transcript['count'], 1)
+
+    async def test_each_pause_becomes_one_transcript_line(self):
+        recording = await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+        self.pipeline.transcripts = ['第一段话。', '第二段话。']
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+        await wait_for(lambda: self.manager.transcript(recording.id)['count'] >= 2)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual(transcript['text'], '[00:00] 第一段话。\n[00:00] 第二段话。')
+        self.assertEqual([line['stamp'] for line in transcript['lines']], ['00:00', '00:00'])
+        self.assertEqual(transcript['count'], 2)
+        events = [event for event in self.events if event['type'] == 'recording.transcript']
+        self.assertEqual([event['line'] for event in events], [1, 2])
+        self.assertEqual([event['text'] for event in events], ['第一段话。', '第二段话。'])
+        self.assertEqual([event['stamp'] for event in events], ['00:00', '00:00'])
+        metadata = await self.session.stop_recording('web')
+        self.assertTrue(metadata['transcript_available'])
+        self.assertEqual(metadata['transcript_lines'], 2)
+        self.assertEqual(self.manager.transcript(recording.id)['status'], 'stopped')
+
+    async def test_short_pause_merges_and_long_pause_starts_a_new_line(self):
+        recording = await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+        self.pipeline.transcripts = ['第一段话', '第二段话', '第三段话']
+
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32), 0, None)
+        await wait_for(lambda: self.manager.transcript(recording.id)['count'] >= 1)
+        first = [e for e in self.events if e['type'] == 'recording.transcript'][-1]
+        self.assertFalse(first['merged'])
+
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32), 0, 700)
+        await wait_for(lambda: any(e['type'] == 'recording.transcript' and e.get('merged')
+                                   for e in self.events))
+        merged = next(e for e in self.events
+                      if e['type'] == 'recording.transcript' and e.get('merged'))
+        self.assertEqual(merged['line'], 1)
+        self.assertEqual(merged['text'], '第一段话。第二段话')
+        self.assertTrue(merged['merged'])
+        self.assertEqual(self.manager.transcript(recording.id)['count'], 1)
+
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32), 0, 1500)
+        await wait_for(lambda: self.manager.transcript(recording.id)['count'] >= 2)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual(transcript['count'], 2)
+        self.assertEqual(transcript['text'],
+                         '[00:00] 第一段话。第二段话\n[00:00] 第三段话')
+        self.assertEqual(transcript['lines'][0]['text'], '第一段话。第二段话')
+        await self.session.stop_recording('web')
+
+    async def test_speaker_labels_do_not_merge_across_speakers_and_refine_on_stop(self):
+        self.session.speaker_engine = FakeSpeakerEngine([[1, 0], [0, 1], [.9, .1]])
+        recording = await self.session.start_recording('web')
+        # This test isolates turn merging; promotion timing is covered in
+        # test_speaker.py.  Create speakers immediately here.
+        self.session.recording_speakers = SpeakerTracker(
+            threshold=.25, min_seconds=.5, promote_seconds=0)
+        self.session.recording_listen_after = 0
+        self.pipeline.transcripts = ['甲说话', '乙说话', '甲又说']
+
+        self.session.recording_heard(np.zeros(32000, dtype=np.float32), 0, None)
+        await wait_for(lambda: any(e['type'] == 'recording.transcript'
+                                   for e in self.events))
+        first = [e for e in self.events if e['type'] == 'recording.transcript'][-1]
+        self.assertEqual(first['speaker'], '说话人1')
+        self.assertEqual(first['speaker_id'], 1)
+
+        self.session.recording_heard(np.zeros(32000, dtype=np.float32), 0, 700)
+        await wait_for(lambda: self.manager.transcript(recording.id)['count'] >= 2)
+        second = [e for e in self.events if e['type'] == 'recording.transcript'][-1]
+        self.assertEqual(second['speaker'], '说话人2')
+        self.assertEqual(second['line'], 2)
+        self.assertFalse(second['merged'])
+
+        self.session.recording_heard(np.zeros(32000, dtype=np.float32), 0, 700)
+        await wait_for(lambda: self.manager.transcript(recording.id)['count'] >= 3)
+        metadata = await self.session.stop_recording('web')
+        self.assertEqual(metadata['speaker_count'], 1)
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual([line['speaker'] for line in transcript['lines']],
+                         ['说话人1', '说话人1', '说话人1'])
+        self.assertNotIn('说话人2', transcript['text'])
+
+    async def test_speaker_engine_failure_does_not_stop_the_transcript(self):
+        self.session.speaker_engine = FailingSpeakerEngine()
+        await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+        self.pipeline.transcripts = ['没有声纹也要转写']
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32), 0, None)
+        await wait_for(lambda: any(e['type'] == 'recording.transcript'
+                                   for e in self.events))
+        await wait_for(lambda: any(e['type'] == 'recording.speaker_unavailable'
+                                   for e in self.events))
+        transcript = self.manager.transcript(self.session.recording.id)
+        self.assertEqual(transcript['count'], 1)
+        self.assertEqual(transcript['lines'][0]['text'], '没有声纹也要转写')
+        self.assertIsNone(transcript['lines'][0]['speaker'])
+        metadata = await self.session.stop_recording('web')
+        self.assertEqual(metadata['speaker_count'], 0)
+
+    async def test_stop_waits_for_the_last_transcript_line(self):
+        recording = await self.session.start_recording('web')
+        self.session.recording_listen_after = 0
+
+        async def transcribe(pcm):
+            await asyncio.sleep(.2)
+            return '最后一句'
+
+        self.pipeline.transcribe = transcribe
+        self.session.recording_heard(np.zeros(1600, dtype=np.float32))
+        await asyncio.sleep(.05)
+        metadata = await self.session.stop_recording('web')
+        transcript = self.manager.transcript(recording.id)
+        self.assertEqual(transcript['text'], '[00:00] 最后一句')
+        self.assertEqual(transcript['count'], 1)
+        self.assertEqual(metadata['transcript_lines'], 1)
+
+    async def test_idle_timeout_never_ends_recording_mode(self):
+        await self.session.start_recording('web')
+        self.session.state = 'recording'
+        self.session.last_activity = time.monotonic()-self.session.idle_seconds-10
+        await self.session.idle()
+        self.assertEqual(self.session.state, 'recording')
+        self.assertIsNotNone(self.session.recording)
+
+    async def test_close_finalizes_an_active_recording(self):
+        recording = await self.session.start_recording('device')
+        recording.write(b'\0\0'*800)
+        await self.session.close()
+        self.assertIsNone(self.session.recording)
+        metadata = self.manager.get(recording.id)
+        self.assertEqual(metadata['status'], 'stopped')
+        self.assertEqual(metadata['reason'], 'disconnect')
+        self.assertFalse(self.manager.active)
+
+    async def test_audio_input_keeps_recording_when_vad_is_unavailable(self):
+        await self.session.start_recording('web')
+        config = {'speech_threshold': .65, 'onset_ms': 160, 'silence_ms': 640,
+                  'max_utterance_seconds': 15, 'vad_model': '', 'barge_in': True}
+        with patch('aihub_server.input.vad_path', side_effect=ValueError('no vad')):
+            ingress = AudioInput(self.session, 'pcm_s16le', True, config)
+            try:
+                for _ in range(5):
+                    ingress.put(b'\x01\x00'*640)
+                await wait_for(lambda: self.session.recording.samples >= 3200)
+                await wait_for(lambda: any(
+                    event['type'] == 'recording.transcription_unavailable'
+                    for event in self.events))
+            finally:
+                await ingress.close()
+        metadata = await self.session.stop_recording('web')
+        self.assertEqual(metadata['samples'], 3200)
+        self.assertTrue(any(event['type'] == 'recording.transcription_unavailable'
+                            for event in self.events))
+
+    def test_recording_transcription_follows_whether_asr_is_on_this_machine(self):
+        cases = [
+            ({'provider': 'builtin'}, True),
+            ({'provider': 'http', 'url': 'http://127.0.0.1:8781/v1'}, True),
+            ({'provider': 'http', 'url': 'http://localhost:8781/v1'}, True),
+            # Docker Desktop maps this alias to the host's own loopback.
+            ({'provider': 'http', 'url': 'http://host.docker.internal:8781/v1'}, True),
+            ({'provider': 'http', 'url': 'http://192.168.0.50:8781/v1'}, False),
+            ({'provider': 'http', 'url': 'https://api.example.com/v1'}, False),
+            ({'provider': 'http'}, False),
+        ]
+        for asr, expected in cases:
+            self.pipeline.config = {'asr': asr}
+            self.assertEqual(self.session.recording_local_asr_allowed(), expected, asr)
+
+    async def test_http_asr_never_receives_recording_audio_for_stop_detection(self):
+        self.pipeline.config = {'asr': {'provider': 'http'}}
+        self.assertFalse(self.session.recording_local_asr_allowed())
+        await self.session.start_recording('web')
+        config = {'speech_threshold': .65, 'onset_ms': 160, 'silence_ms': 640,
+                  'max_utterance_seconds': 15, 'vad_model': '', 'barge_in': True}
+        with patch('aihub_server.input.vad_path') as vad:
+            ingress = AudioInput(self.session, 'pcm_s16le', True, config)
+            ingress.put(b'\x03\x00'*640)
+            await wait_for(lambda: self.session.recording.samples >= 640)
+            await ingress.close()
+            vad.assert_not_called()
+        self.assertTrue(any(event['type'] == 'recording.transcription_unavailable'
+                            and '不会上传' in event.get('message', '')
+                            for event in self.events))
+        await self.session.stop_recording('web')
+
+    async def test_channel_close_drains_queued_audio_before_finalizing(self):
+        await self.session.start_recording('device')
+        config = {'speech_threshold': .65, 'onset_ms': 160, 'silence_ms': 640,
+                  'max_utterance_seconds': 15, 'vad_model': '', 'barge_in': True}
+        with patch('aihub_server.input.vad_path', side_effect=ValueError('no vad')):
+            ingress = AudioInput(self.session, 'pcm_s16le', True, config)
+            for _ in range(10):
+                ingress.put(b'\x02\x00'*640)
+            # Simulate the device key closing the WebSocket right after speech.
+            await ingress.close()
+        metadata = await self.session.stop_recording('disconnect')
+        self.assertEqual(metadata['samples'], 6400)
+        self.assertEqual(metadata['reason'], 'disconnect')
