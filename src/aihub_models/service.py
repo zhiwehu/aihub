@@ -144,12 +144,20 @@ def build(data_root, recordings_root, transcribe=None, minutes_model=None):
     that only needs denoise and re-diarization).
     """
     from .minutes import MinutesEngine
+    from aihub_common import env_value
     from .records import Records
 
     records = Records(recordings_root)
     jobs = MediaJobs(data_root / 'media-jobs', recordings_root, transcribe=transcribe)
     minutes = None
     if minutes_model is not False:
-        engine = MinutesEngine(minutes_model) if minutes_model else None
+        provider = env_value('MINUTES_PROVIDER', 'local')
+        if provider == 'http':
+            from .http_processing import HTTPMinutesEngine
+            engine = HTTPMinutesEngine(minutes_model)
+        elif provider == 'local':
+            engine = MinutesEngine(minutes_model) if minutes_model else None
+        else:
+            raise ValueError('MINUTES_PROVIDER must be local or http')
         minutes = MinutesService(data_root, records, engine=engine)
     return jobs, minutes

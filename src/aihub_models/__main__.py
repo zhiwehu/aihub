@@ -55,7 +55,7 @@ def _serve(args):
     token = args.token or env_value('MODELS_TOKEN') or secrets.token_urlsafe(32)
     transcribe = None
     asr_model = args.asr_model or env_value('MEDIA_ASR_MODEL')
-    if asr_model:
+    if asr_model or env_value('MEDIA_ASR_PROVIDER') == 'http':
         transcribe = make_transcribe(asr_model, args.log_level)
     jobs, minutes = build(data_root, recordings_root, transcribe=transcribe,
                           minutes_model=False if args.no_minutes else args.minutes_model)
@@ -68,8 +68,15 @@ def _serve(args):
                 access_log=None, shutdown_timeout=5)
 
 
-def make_transcribe(model_id, log_level='info'):
+def make_transcribe(model_id=None, log_level='info'):
     """Return an async ``transcribe(pcm)`` backed by a lazily warmed local ASR."""
+    from aihub_common import env_value
+    provider = env_value('MEDIA_ASR_PROVIDER', 'local')
+    if provider == 'http':
+        from .http_processing import make_http_transcribe
+        return make_http_transcribe(model_id)
+    if provider != 'local':
+        raise ValueError('MEDIA_ASR_PROVIDER must be local or http')
     from .worker import Engine
 
     _common_logging(log_level)

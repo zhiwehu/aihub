@@ -246,6 +246,8 @@ async def _transcribe_turns(pcm, groups, transcribe, hop=.8):
                 except Exception:
                     if attempt == 0:
                         await asyncio.sleep(1)
+                    else:
+                        raise
             text = re.sub(r'\s+', ' ', text or '').strip()
             if not text or CONTROL.match(text):
                 continue
