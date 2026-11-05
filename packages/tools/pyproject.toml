@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aihub-tools"
+version = "0.1.0"
+description = "AIHub tool layer: MCP tools, workflows, calendars and the local Rex planner"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "aihub-common>=0.2",
+    "jsonschema>=4.23,<5",
+    "psutil>=6,<8",
+]
+
+[project.optional-dependencies]
+# The Rex planner runs as a separate process with torch + transformers.
+rex = ["torch>=2", "transformers>=4.40", "safetensors>=0.4"]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
