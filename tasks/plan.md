@@ -10,5 +10,5 @@ Approved 2026-11-05. Keep current live deployment while preparing a proven repla
 - [x] Remove old sibling source assumptions from startup and Docker packaging.
 - [x] Test packages, client/admin/firmware, standalone native start/stop and Docker.
 - [x] Document source mapping, deployment inputs, test limits, cutover and rollback.
-- [ ] Push verified target repositories and check clean/synchronized status.
+- [x] Push verified target repositories; final delivery checks confirm clean/synchronized status.
 - [ ] Production cutover after current user testing; existing data/ingress stay on old deployment until then.

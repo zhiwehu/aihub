@@ -44,3 +44,10 @@ migration does not move recordings/configuration, reconfigure hardware or switch
 production ingress. Follow migration.md for a backed-up cutover and rollback.
 No actual microphone, long-recording, ESP32 flash or Intel performance claim is
 made from the isolated smoke checks. Old repositories remain available and clean.
+
+## Published code revisions
+
+Core migration implementation: d270463. Independent client: a8eed5e. Firmware
+layout documentation: f76b416 (code unchanged). All targets are published on main
+without force pushes. Original source repositories remain in place; no production
+cutover was performed. Client release artifacts include the source license.
