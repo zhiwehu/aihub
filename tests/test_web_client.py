@@ -149,3 +149,16 @@ class WebClientTests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         response = await self.client.get('/demo/assets/client.js', headers={'Origin': 'http://' + host})
         self.assertEqual(response.status, 403)
+
+    async def test_listener_shutdown_closes_authenticated_and_pending_websockets(self):
+        import asyncio
+        ws, _ = await self.connect()
+        pending = await self.client.ws_connect('/ws')
+        await asyncio.wait_for(self.client.app.shutdown(), 1)
+        # The active stream may have queued session events before the close.
+        async def closed(socket):
+            async for _ in socket:
+                pass
+            return socket.closed
+        self.assertTrue(await asyncio.wait_for(closed(ws), 1))
+        self.assertTrue(await asyncio.wait_for(closed(pending), 1))

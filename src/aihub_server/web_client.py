@@ -9,6 +9,7 @@ from pathlib import Path
 from aiohttp import web
 from aihub_common import env_value
 
+CLIENT_SOCKETS = web.AppKey('client_sockets', set)
 CLIENT_ONLY = web.AppKey('client_only', bool)
 CLIENT_ID = web.RequestKey('client_id', str)
 
@@ -128,6 +129,12 @@ def create_client_app(hub):
 
     app = web.Application(middlewares=[guard], client_max_size=65536)
     app[HUB], app[CLIENT_ONLY] = hub, True
+    app[CLIENT_SOCKETS] = set()
+    async def shutdown(app):
+        import asyncio
+        await asyncio.gather(*(ws.close(code=1001, message=b'client listener shutdown')
+                               for ws in list(app[CLIENT_SOCKETS])), return_exceptions=True)
+    app.on_shutdown.append(shutdown)
     app.router.add_get('/ws', gateway)
     prefix = '/client/v1'
     app.router.add_get(prefix + '/sessions', client_api)

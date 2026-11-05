@@ -8,7 +8,7 @@ commit 34169ab. The remaining client/server and admin-web commits follow.
 
 - Models full pytest suite: 63 passed, including loopback HTTP WAV, bearer auth,
   provider errors, invalid output, timeout, cancellation and ASR retry exhaustion.
-- Server full pytest suite: 299 passed, 18 subtests passed, 1 pre-existing failure:
+- Server full pytest suite: 300 passed, 18 subtests passed, 1 pre-existing failure:
   `test_wake_phrase_alone_activates_without_creating_empty_reply` (unchanged).
 - Server client tests cover credential requirements, absent management routes,
   forged device ID, cross-client resume, recording/audio/transcript/minutes/export
@@ -38,3 +38,8 @@ recording controls, long-recording processing or latency/memory measurement was
 verified. The legacy shared device token cannot prove an individual hardware ID;
 this existing limitation is documented rather than presented as verified identity.
 The browser client has dedicated server-issued identity and record isolation.
+
+Client-listener shutdown explicitly closes authenticated and pending WebSockets;
+its regression test passes within a one-second deadline. Final server suite is
+300 passed + 18 subtests, with the same single baseline wake-phrase failure.
+Admin Web delivery commit: 7c08083. No live cutover was performed.

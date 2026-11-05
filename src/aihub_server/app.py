@@ -24,7 +24,7 @@ from .pipeline import Pipeline, ProviderError
 from .recording import Recordings
 from .session import Session
 from .store import Store
-from .web_client import CLIENT_ONLY, authenticate, owns_session
+from .web_client import CLIENT_ONLY, CLIENT_SOCKETS, authenticate, owns_session
 from .device_mcp import DeviceMCP
 from .services import ServiceManager, ServiceError
 from .connections import Connections, ConnectionError
@@ -288,7 +288,13 @@ async def gateway(request):
         raise web.HTTPServiceUnavailable(text='Connection capacity reached')
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=32768, receive_timeout=90)
     await ws.prepare(request)
-    return await device_gateway(request, ws)
+    if request.app.get(CLIENT_ONLY):
+        request.app[CLIENT_SOCKETS].add(ws)
+    try:
+        return await device_gateway(request, ws)
+    finally:
+        if request.app.get(CLIENT_ONLY):
+            request.app[CLIENT_SOCKETS].discard(ws)
 
 
 async def device_gateway(request, ws):
