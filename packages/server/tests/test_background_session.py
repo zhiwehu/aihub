@@ -92,6 +92,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   self.pipeline.speech=speech;now=time.time();event=calendar.store.create('提醒测试',(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),remind_minutes=1,device_id='fixture',now=now)
   await calendar.tick(now+1);await announcing.wait();await self.session.submit('插话');allow.set()
   await self.wait_for(lambda:self.ops.get(notification_id(event['event_id']))['delivery']=='announced')
+  await self.wait_for(lambda:any(e['type']=='reply.final' and e.get('text','').startswith('日程提醒') for e in self.events))
   self.assertEqual(len([e for e in self.events if e['type']=='reply.final' and e.get('text','').startswith('日程提醒')]),1)
  async def test_answering_calendar_question_suppresses_stale_question_replay(self):
   from aihub_tools.calendar_store import CalendarStore
@@ -102,6 +103,8 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   count=0
   async def raw_chat(*args,**kwargs):
    nonlocal count
+   if kwargs.get('max_tokens')==72:
+    yield '我来整理你刚才提到的日程。';return
    count+=1;yield json.dumps({'title':'开会','date':'明天'} if count==1 else {'title':'开会','date':'明天','time':'15:00'})
   async def chat(history):
    source=route(self.pipeline,history)
@@ -118,3 +121,44 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   self.assertTrue(any(r['delivery']=='superseded' for r in self.ops.recent('one')))
   self.assertEqual(len(calendar.load()['events']),1)
   await self.wait_for(lambda:not self.ops.tasks)
+
+ async def test_background_starts_even_if_initial_speech_is_blocked_and_survives_interrupt(self):
+  async def blocked_speech(text):
+   await asyncio.Event().wait()
+   yield b'\0\0'*320
+  self.pipeline.speech=blocked_speech
+  await self.session.submit('慢查询')
+  await asyncio.wait_for(self.started.wait(),.5)
+  await self.session.interrupt('speech')
+  self.assertTrue(self.ops.tasks)
+  self.release.set()
+  await self.wait_for(lambda:not self.ops.tasks)
+  self.assertEqual(next(r for r in self.ops.recent('one') if r['label']=='慢查询')['status'],'completed')
+
+ async def test_result_interrupted_after_audio_begins_is_never_queued_again(self):
+  began=asyncio.Event()
+  async def speech(text):
+   if '慢查询真实结果' in text:
+    began.set();yield b'\0\0'*320;await asyncio.Event().wait()
+   else:yield b'\0\0'*320
+  self.pipeline.speech=speech
+  await self.session.submit('慢查询');await self.started.wait();self.release.set()
+  await began.wait()
+  await self.wait_for(lambda:self.session.turn is not None and self.session.turn.audio_started and bool(self.session.turn.notification_id))
+  identity=self.session.turn.notification_id
+  await self.session.interrupt('speech')
+  await asyncio.sleep(.8)
+  self.assertEqual(self.ops.get(identity)['delivery'],'interrupted')
+  self.assertFalse(self.ops.pending('one'))
+  self.assertFalse(self.session.notification_ids)
+
+ async def test_acknowledgement_is_generated_from_the_current_request(self):
+  prompts=[]
+  async def raw_chat(history,**kwargs):
+   prompts.append((history,kwargs));yield '我先核对你说的慢查询，查好马上告诉你。'
+  self.pipeline.raw_chat=raw_chat
+  await self.session.submit('慢查询')
+  await self.started.wait()
+  await self.wait_for(lambda:any('我先核对你说的慢查询' in e.get('text','') for e in self.events))
+  self.assertEqual(prompts[0][0][-1]['content'],'慢查询')
+  self.assertLessEqual(prompts[0][1]['max_tokens'],80)

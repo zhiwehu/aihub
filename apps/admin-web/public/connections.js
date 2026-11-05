@@ -59,7 +59,7 @@ function drawGuide() {
     if(usbPanel){if(usbAdvanced&&advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
     else if(advanced.previousElementSibling!==installer)installer.after(advanced);
   }
-  $('client-guide-title').closest('article').hidden=usbPanel;
+  $('client-guide-title').closest('article').hidden=usbPanel||client.id==='web';
   window.dispatchEvent(new CustomEvent('aihub:firmware',{detail:client.firmware}));
   $('client-guide-title').textContent='2. '+(client.id==='web'?'打开网页，开始使用':'准备设备并连接');
   $('client-guide-status').textContent=client.id==='web'?'无需安装':'请先确认设备型号';

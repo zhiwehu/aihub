@@ -57,7 +57,9 @@ $('device-access-form').onsubmit=async event=>{
   }catch(e){$('device-access-result').textContent=e.message;}
 };
 $('device-access-refresh').onclick=()=>refreshDevices().catch(e=>{$('device-access-result').textContent=e.message;});
-window.addEventListener('aihub:view',async event=>{
-  if(event.detail!=='connections')return;
+async function refreshAll(){
   await Promise.allSettled([refresh().catch(e=>message(e.message)),refreshDevices().catch(e=>{$('device-access-result').textContent=e.message;})]);
-});
+}
+window.addEventListener('aihub:view',event=>{if(event.detail==='connections')return refreshAll();});
+// The first view event may precede this independent module's loading.
+if(location.hash==='#connections')refreshAll();

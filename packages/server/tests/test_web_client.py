@@ -200,3 +200,21 @@ class WebClientTests(IsolatedAsyncioTestCase):
         with mock.patch.dict('os.environ', {'AIHUB_CLIENT_PUBLIC_URL':'https://chat.example/app/'}):
             data=await (await self.admin.get('/api/client-credentials')).json()
             self.assertEqual(data['client_url'],'https://chat.example/app/')
+
+    async def test_tool_history_and_background_results_are_scoped_to_client(self):
+        sid='a'*32
+        self.hub.store.session(sid,'web:'+self.first['id'])
+        self.hub.store.source(sid,'web',self.first['id'])
+        self.hub.store.message(sid,'turn','user','查询','received')
+        self.hub.store.event(dict(type='tool.completed',session_id=sid,turn_id='turn',tool='fixture'))
+        self.hub.operations.notify('b'*32,sid,'查询','私有任务结果')
+        self.hub.operations.notify('c'*32,sid,'查询','临时进度',kind='progress')
+        own=await (await self.client.get('/client/v1/sessions/'+sid+'/tool-calls',headers=self.auth())).json()
+        self.assertEqual(own['events'][0]['payload']['tool'],'fixture')
+        self.assertEqual((await self.client.get('/client/v1/sessions/'+sid+'/tool-calls',headers=self.auth(self.second))).status,404)
+        other=await (await self.client.get('/client/v1/operations',headers=self.auth(self.second))).json()
+        self.assertEqual(other['operations'],[])
+        own=await (await self.client.get('/client/v1/operations',headers=self.auth())).json()
+        self.assertEqual(len(own['operations']),1)
+        self.assertEqual(own['operations'][0]['text'],'私有任务结果')
+        self.assertNotIn('workflow',own['operations'][0])

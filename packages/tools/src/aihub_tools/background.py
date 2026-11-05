@@ -22,7 +22,7 @@ class Operations:
     record.update(status='unknown',text='应用在执行中重启，结果需要核实，不会自动重新执行。',delivery='pending');self.save(record)
  def save(self,record):
   record['updated']=time.time();atomic_json(record_path(self.path,record['id']),record)
-  self.publish({'type':'operation.changed','operation_id':record['id'],'session_id':record['session_id'],'status':record['status']})
+  self.publish({'type':'operation.changed','operation_id':record['id'],'session_id':record['session_id'],'turn_id':record.get('turn_id'),'status':record['status'],'delivery':record.get('delivery')})
  def get(self,identity):return read_json(record_path(self.path,identity))
  def recent(self,scope=None):
   rows=[read_json(p) for p in sorted(self.path.glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True)[:100]]
@@ -40,7 +40,7 @@ class Operations:
   try:record=self.get(identity)
   except FileNotFoundError:
    if len(list(self.path.glob('*.json')))>=1000:
-    removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled')]
+    removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted')]
     if not removable:raise ValueError('operation_history_full')
     min(removable,key=lambda p:p.stat().st_mtime).unlink()
    record={'id':identity,'session_id':scope,'turn_id':None,'label':label,'text':text,'status':'completed','delivery':'pending','created':time.time(),**metadata};self.save(record)
@@ -54,7 +54,7 @@ class Operations:
  def start(self,scope,turn_id,label,source,gate,emit=None,progress_text=None):
   self.check_capacity(scope)
   if len(list(self.path.glob('*.json')))>=1000:
-   removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled')]
+   removable=[p for p in self.path.glob('*.json') if p.stem not in self.tasks and read_json(p).get('delivery') in ('announced','superseded','cancelled','interrupted')]
    if not removable:raise ValueError('operation_history_full')
    min(removable,key=lambda p:p.stat().st_mtime).unlink()
   record={'id':uuid.uuid4().hex,'session_id':scope,'turn_id':turn_id,'label':label[:120],'status':'queued','delivery':'pending','created':time.time(),'text':''};self.save(record)

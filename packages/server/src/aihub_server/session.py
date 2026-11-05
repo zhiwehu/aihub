@@ -657,9 +657,11 @@ class Session:
     async def interrupt(self, reason='manual'):
         turn = self.turn
         if turn and not turn.cancelled:
-            if self.operations and turn.notification_id and reason!='disconnect':
+            if self.operations and turn.notification_id:
                 record=self.operations.get(turn.notification_id)
-                if (record.get('calendar_question') or record.get('everyday_question') or turn.audio_started) and record['delivery']=='pending':
+                if turn.audio_started and record['delivery'] in ('pending','announced'):
+                    record['delivery']='interrupted';self.operations.save(record)
+                elif reason!='disconnect' and (record.get('calendar_question') or record.get('everyday_question')) and record['delivery']=='pending':
                     record['delivery']='superseded';self.operations.save(record)
             turn.cancelled = True  # Invalidate BEFORE cancelling provider or awaiting network I/O.
             if turn.task:
@@ -759,6 +761,27 @@ class Session:
                                                 elapsed_ms=delta.elapsed_ms, code=delta.code, **metadata)
                                 continue
                             if isinstance(delta, ToolNotice):
+                                if self.operations and announcement is None:
+                                    gate=asyncio.Event()
+                                    try:
+                                        operation=self.operations.start(self.id,turn.id,text,source,gate,self.emit_operation)
+                                        manager=getattr(getattr(self.pipeline,'runtime',None),'workflows',None)
+                                        if manager:manager.transfer_owner(asyncio.current_task(),self.operations.tasks[operation['id']])
+                                    except ValueError:
+                                        message='后台任务数量已满，请等待已有任务完成。'
+                                        turn.text+=message;await self.emit('reply.delta',turn,text=message)
+                                        await sentences.put(message);break
+                                    detached=True
+                                    gate.set()
+                                    if not turn.text.strip():
+                                        from .acknowledgement import acknowledgement
+                                        response=await acknowledgement(self.pipeline,history,text)
+                                        turn.text+=response
+                                        await self.emit('reply.delta',turn,text=response)
+                                        await sentences.put(response)
+                                    if pending.strip():
+                                        await sentences.put(pending);pending=''
+                                    break
                                 if pending.strip():
                                     await sentences.put(pending)
                                     pending = ''
@@ -768,19 +791,6 @@ class Session:
                                     await sentences.put(delta.text)
                                 delivered = asyncio.Event()
                                 gate=asyncio.Event()
-                                if self.operations and announcement is None:
-                                    try:
-                                        feedback=None
-                                        if not turn.text.strip():
-                                            feedback=phrasing.progress(text)
-                                        operation=self.operations.start(self.id,turn.id,text,source,gate,self.emit_operation,progress_text=feedback)
-                                        manager=getattr(getattr(self.pipeline,'runtime',None),'workflows',None)
-                                        if manager:manager.transfer_owner(asyncio.current_task(),self.operations.tasks[operation['id']])
-                                    except ValueError:
-                                        message='后台任务数量已满，请等待已有任务完成。'
-                                        turn.text+=message;await self.emit('reply.delta',turn,text=message)
-                                        await sentences.put(message);break
-                                    detached=True
                                 if not turn.text.strip():
                                     gate.set()
                                     if detached:break
@@ -832,6 +842,7 @@ class Session:
                     lead = .12
                     deadline = None
                     audio_samples = 0
+                    notification_consumed = False
                     while (block := await audio.get()) is not None:
                         if isinstance(block, asyncio.Event):
                             if deadline is None:
@@ -864,6 +875,9 @@ class Session:
                         deadline = max(deadline, time.monotonic() - lead)
                         await asyncio.sleep(max(0, deadline-time.monotonic()))
                         self.last_activity = time.monotonic()  # 播报本身就是活动
+                        if turn.notification_id and self.operations and not notification_consumed:
+                            self.operations.announced(turn.notification_id)
+                            notification_consumed = True
                         await self.emit('audio.chunk', turn, data=base64.b64encode(block).decode())
                         audio_samples += len(block)//2
                         deadline += len(block)/32000
@@ -960,8 +974,8 @@ class Session:
                 await asyncio.gather(turn.task,return_exceptions=True)
                 self.notification_ids.discard(record['id'])
                 if turn.delivery in ('generated','played') and not turn.cancelled:self.operations.announced(record['id'])
-                elif not self.closed and turn.delivery!='failed':
-                    # An interrupted announcement is retried only after the next quiet turn.
+                elif not self.closed and turn.delivery!='failed' and self.operations.get(record['id'])['delivery']=='pending':
+                    # Retry only if playback never began; consumed results stay consumed.
                     self.last_activity=time.monotonic();self.queue_notification(record)
         except asyncio.CancelledError:pass
 

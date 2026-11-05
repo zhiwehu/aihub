@@ -25,3 +25,5 @@ verification -> build and update only the three-repository test deployment.
 Checks: current core suites (retain known wake failure), meaningful queue/delivery
 regressions, client Node tests, real browser page/menu/connection/tool evidence.
 Existing user data remains intact; no automatic replay of side-effecting tasks.
+
+Implementation and verification: docs/client-experience.md.

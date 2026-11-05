@@ -82,10 +82,17 @@ async def client_api(request):
     if path == '/client/v1/sessions':
         return web.json_response({'sessions': [s for s in hub.store.sessions(client_type='web', client_instance=identity)
                                   if owns_session(hub, s['id'], identity)]})
+    if path == '/client/v1/operations':
+        fields=('id','session_id','turn_id','label','status','delivery','created','updated','text','last_tool')
+        return web.json_response({'operations': [{k:r[k] for k in fields if k in r}
+            for r in hub.operations.recent() if r.get('kind')!='progress' and owns_session(hub,r.get('session_id'),identity)]})
     if 'sid' in request.match_info:
         sid = request.match_info['sid']
         if not owns_session(hub, sid, identity):
             raise web.HTTPNotFound()
+        if path.endswith('/tool-calls'):
+            from .app import tool_calls
+            return await tool_calls(request)
         return web.json_response(hub.store.messages(sid))
     if path == '/client/v1/meeting-templates':
         return await minutes_proxy(request)
@@ -156,7 +163,9 @@ def create_client_app(hub):
     app.on_shutdown.append(shutdown)
     app.router.add_get('/ws', gateway)
     prefix = '/client/v1'
+    app.router.add_get(prefix + '/operations', client_api)
     app.router.add_get(prefix + '/sessions', client_api)
+    app.router.add_get(prefix + '/sessions/{sid}/tool-calls', client_api)
     app.router.add_get(prefix + '/sessions/{sid}/messages', client_api)
     app.router.add_get(prefix + '/meeting-templates', client_api)
     for method in ('GET', 'POST'):
