@@ -218,6 +218,7 @@ class Hub:
     async def start(self):
         self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90, connect=10, sock_read=30))
         self.runtime = Runtime(self.root)
+        self.runtime.tool_settings=lambda:self.config.get()['tools']
         self.runtime.services = self.services
         self.runtime.planner = self.planner
         self.runtime.extensions = self.extensions
@@ -270,9 +271,6 @@ class Hub:
             self.runtime.close()
         await self.planner.close()
         await self.extensions.close()
-        from aihub_tools.music_player import MusicPlayer
-        with contextlib.suppress(OSError,ValueError):
-            await asyncio.to_thread(MusicPlayer(self.root,self.config.get()['tools']['music_directory']).execute,'stop')
         await self.services.shutdown()
         self.store.close()
 
@@ -482,8 +480,9 @@ async def device_gateway(request, ws):
                 if kind == 'tts' and ready_supported and value.get('state') in ('ready','stopped'):
                     if value.get('turn_id') != encoding_turn:
                         continue
-                    if value['state'] == 'ready' and (not session.turn or session.turn.id != encoding_turn):
-                        continue
+                    owns_reply=bool(session.turn and session.turn.id==encoding_turn)
+                    owns_music=bool(session.music and session.music.audio_active and getattr(session.music,'playback_id',None)==encoding_turn)
+                    if value['state']=='ready' and not (owns_reply or owns_music):continue
                     fields = {k:value.get(k) for k in ('device_state','rx_audio_packets','dropped_audio_packets',
                                                       'decoded_audio_packets','played_audio_packets')}
                     if any(type(v) is not int or not 0 <= v <= 0xffffffff for v in fields.values()):
@@ -536,6 +535,10 @@ async def device_gateway(request, ws):
                         await session.stop_recording('client', speak=False)
                     await session.interrupt('standby')
                     await session.transition('standby')
+                elif kind == 'music.control':
+                    if not session.music or value.get('action') not in ('pause','resume','stop'):
+                        raise ValueError('invalid_music_control')
+                    await session.music.call(value['action'])
                 elif kind == 'playback.done':
                     session.playback_done(value.get('turn_id'))
                 elif kind == 'mcp':
@@ -634,8 +637,8 @@ async def api(request):
                         'message':'请先停止内置服务，再切换提供商'}}, status=409)
             if (current['tools']['music'] and not value['tools']['music'] or
                 current['tools']['music_directory']!=value['tools']['music_directory']):
-                from aihub_tools.music_player import MusicPlayer
-                await asyncio.to_thread(MusicPlayer(hub.root,current['tools']['music_directory']).execute,'stop')
+                for active in list(hub.sessions.values()):
+                    if active.music:await active.music.pause(stop=True)
             if scope=='models':value['tools']=hub.config.get()['tools']
             elif scope=='tools':value={**hub.config.get(),'tools':value['tools']}
             hub.config.save(value)

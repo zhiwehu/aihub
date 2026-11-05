@@ -42,28 +42,9 @@ export function setupMcpExtensions({api,node,notice,onConfig,refresh}) {
       const data=JSON.parse(result.content[0].text);
       $('music-status').textContent='找到 '+data.matches+' 首音乐'+(data.truncated?'（扫描已达上限）':'')+'，显示前 20 首。';
       for(const track of data.tracks){
-        const row=node('div','connection-device'),button=node('button','secondary','播放');
-        button.type='button';button.setAttribute('aria-label','播放 '+track.title);
-        button.onclick=async()=>{
-          button.disabled=true;
-          try{
-            const result=await testTool('music',{action:'play',track_id:track.track_id});
-            const data=JSON.parse(result.content[0].text);
-            if(data.status!=='playing')throw new Error(data.message || '尚未开始播放');
-            $('music-status').textContent='已启动 '+track.title+'，输出在后端电脑。';
-          }catch(e){$('music-status').textContent=e.message;}finally{button.disabled=false;}
-        };
-        row.append(node('span','',track.title),button);$('music-library').append(row);
+        const row=node('div','connection-device');row.append(node('span','',track.title));$('music-library').append(row);
       }
-      for(const [action,label] of [['pause','暂停音乐'],['resume','继续播放'],['stop','停止音乐']]){
-        const button=node('button','secondary',label);button.type='button';
-        button.onclick=async()=>{
-          button.disabled=true;
-          try{await testTool('music',{action});$('music-status').textContent=label+'请求已完成。';}
-          catch(e){$('music-status').textContent=e.message;}finally{button.disabled=false;}
-        };
-        $('music-library').append(button);
-      }
+      $('music-library').append(node('p','hint','请在聊天网页或语音设备说“播放音乐”或指定歌名，音乐会从该客户端播放。'));
     }catch(e){$('music-status').textContent=e.message;}finally{button.disabled=false;}
   };
   $('mcp-upload-form').onsubmit=async event=>{

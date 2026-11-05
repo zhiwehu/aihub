@@ -16,7 +16,14 @@ so that the contract is written down and type checkers can catch drift.
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["ToolPipeline", "ToolRuntime"]
+__all__ = ["ToolPipeline", "ToolRuntime", "ClientMusicControl"]
+
+
+class ClientMusicControl(Protocol):
+    """Playback actions target only the authenticated pipeline's own client."""
+
+    async def call(self, action: str, query: str = '', track_id: str = '') -> dict[str, Any]:
+        ...
 
 
 @runtime_checkable
@@ -52,6 +59,8 @@ class ToolPipeline(Protocol):
     runtime: ToolRuntime
     #: Device-MCP bridge for the current session, or ``None`` when offline.
     device: Any
+    #: Session-scoped client music playback controller, or None outside a session.
+    music: ClientMusicControl | None
 
     def chat(self, history):
         """Yield reply text, running tool planning and calls when needed."""

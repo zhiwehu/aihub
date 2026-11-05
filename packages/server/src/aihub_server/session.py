@@ -74,6 +74,13 @@ class Session:
         self.speaker_engine=getattr(getattr(pipeline,'runtime',None),'speakers',None)
         self.minutes=getattr(getattr(pipeline,'runtime',None),'minutes',None)
         self.operations=getattr(getattr(pipeline,'runtime',None),'operations',None)
+        self.music=None
+        runtime=getattr(pipeline,'runtime',None)
+        if getattr(runtime,'data_root',None):
+            from .music import ClientMusic
+            settings=getattr(runtime,'tool_settings',lambda:getattr(pipeline,'config',{}).get('tools',{}))
+            self.music=ClientMusic(self,runtime.data_root,settings)
+        pipeline.music=self.music
         self.notifications=asyncio.Queue(maxsize=30);self.notification_ids=set()
         self.notification_callback=self.queue_notification
         self.announcer=None
@@ -85,7 +92,8 @@ class Session:
         if self.closed or (turn and (turn.cancelled or self.turn is not turn)):
             return
         self.seq += 1
-        event = dict(type=kind, session_id=self.id, turn_id=turn.id if turn else None,
+        media_turn_id=data.pop('media_turn_id',None)
+        event = dict(type=kind, session_id=self.id, turn_id=turn.id if turn else media_turn_id,
                      seq=self.seq, timestamp=time.time(), **data)
         # Background wake transcripts are sent only to their own client, never journalled.
         # Recording text already lives in its own .txt; do not double-store each line.
@@ -167,6 +175,7 @@ class Session:
             # Any start entry point must cut an in-flight reply and playback.
             # The voice command's own turn is excluded: it is about to return.
             await self.interrupt('recording')
+        if self.music and self.music.state in ('playing','queued'):await self.music.pause()
         recording = self.recording_manager.start(self.id, self.device_id, trigger)
         if hasattr(self.store, 'source_for'):
             recording.source = self.store.source_for(self.id)
@@ -655,6 +664,7 @@ class Session:
         await asyncio.gather(turn.task, return_exceptions=True)
 
     async def interrupt(self, reason='manual'):
+        if self.music and self.music.state in ('playing','queued'):await self.music.pause()
         turn = self.turn
         if turn and not turn.cancelled:
             if self.operations and turn.notification_id:
@@ -675,7 +685,7 @@ class Session:
     async def submit(self, text=None, pcm=None):
         if self.closed or self.recording is not None:
             return
-        if self.turn:
+        if self.turn or (self.music and self.music.state in ('playing','queued')):
             await self.interrupt('new_input')
         turn = self.turn = Turn()
         turn.task = asyncio.create_task(self._run(turn, text, pcm))
@@ -688,6 +698,7 @@ class Session:
         transcribed = text is None
         try:
             async with asyncio.timeout(120):
+                if self.music and self.music.playing:await self.music.pause()
                 await self.transition('thinking', turn)
                 if announcement is not None:text=announcement
                 if text is None:
@@ -950,6 +961,7 @@ class Session:
         try:
             while True:
                 record=await self.notifications.get()
+                if self.music and self.music.playing:await self.music.pause()
                 while self.turn or self.input_active or self.recording is not None or time.monotonic()-self.last_activity<.5:
                     await asyncio.sleep(.1)
                 if self.closed:return
@@ -985,6 +997,7 @@ class Session:
         except asyncio.CancelledError:pass
 
     async def idle(self):
+        if self.music and self.music.track and self.music.state in ('queued','playing','paused'):return
         if self.recording is not None:
             return  # 录音模式由用户明确停止，不能因空闲自动回到待机。
         timers=getattr(getattr(self.pipeline,'runtime',None),'timer_reminders',None)
@@ -1009,6 +1022,7 @@ class Session:
             with contextlib.suppress(Exception):
                 await self.stop_recording('disconnect', notify=False)
         await self.interrupt('disconnect')
+        if self.music:await self.music.close()
         self.closed = True
         self.state = 'disconnected'
         if self.operations:self.operations.unbind(self.id,self.notification_callback)

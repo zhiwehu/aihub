@@ -33,9 +33,9 @@ including after reconnect. Work/results remain stored. A result interrupted befo
 any audio begins stays pending and can be announced when the session is quiet.
 Server restart never automatically re-executes side-effecting tool work.
 
-Validation (2026-11-05): server 321 passed + 28 subtests, with only the documented
-pre-existing wake-phrase failure; tools 87 passed + 15 subtests; admin 14 Node tests;
-artifact integrity 1 test; independent client 9 Node tests. Real browser validated
+Validation (2026-11-05): server 330 passed + 28 subtests, with only the documented
+pre-existing wake-phrase failure; tools 90 passed + 15 subtests; admin 14 Node tests;
+artifact integrity 1 test; independent client 10 Node tests. Real browser validated
 connection, calendar tool history, chat/recording menu switching and desktop/mobile
 layout. Full hardware microphone interruption still needs the user's live test.
 
@@ -88,3 +88,5 @@ Deployed smoke verification used the current model for weather/news/calendar fir
 feedback and confirmed short, unquoted preparation wording. The configured RSS
 news tool completed successfully with Rex deliberately unavailable. No user
 operation, recording or playback was created by the smoke check.
+
+Client-owned music playback is now implemented; see docs/client-music.md.

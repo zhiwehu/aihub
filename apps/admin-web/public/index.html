@@ -360,9 +360,9 @@
           <div id="mcp-tool-settings-storage" hidden>
           <article class="panel mcp-extension">
             <h2>本地音乐目录</h2>
-            <p class="hint">声音从后端电脑的默认音频设备播放。支持 MP3、WAV、M4A、AAC、AIFF、FLAC；首次使用请设置目录并启用。</p>
+            <p class="hint">声音发送到发起请求的网页客户端或语音设备。支持 MP3、WAV、M4A、AAC、AIFF、FLAC；首次使用请设置目录并启用。</p>
             <form id="music-settings-form">
-              <label>音乐目录（后端电脑上的绝对路径）<input id="music-directory" maxlength="2048" placeholder="例如：/Users/你的用户名/Music" /></label>
+              <label>音乐目录（服务端可读取的绝对路径）<input id="music-directory" maxlength="2048" placeholder="例如：/Users/你的用户名/Music" /></label>
               <label class="check"><input type="checkbox" id="music-enabled" />启用本地音乐</label>
               <div class="button-row"><button class="primary" type="submit">保存音乐设置</button><button class="secondary" type="button" id="music-scan">扫描音乐目录</button></div>
             </form>

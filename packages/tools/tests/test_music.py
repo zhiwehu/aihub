@@ -42,3 +42,28 @@ class MusicTests(unittest.TestCase):
              patch.object(self.player,'_save',side_effect=OSError('test disk failure')):
             with self.assertRaisesRegex(ValueError,'music_playback_failed'):self.player.execute('play')
         child.terminate.assert_called_once();child.wait.assert_called_once()
+
+class ClientMusicToolTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tool_uses_the_requesting_session_and_does_not_claim_queued_music_is_playing(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from aihub_tools.tool_chat import chat
+        from aihub_tools.tools import catalogue,ToolStatus
+        tools={t['name']:True for t in catalogue()};tools.update(planner='rex',default_city='合肥',news_source='chinanews',news_limit=3,timeout_seconds=20,music_directory='')
+        music=SimpleNamespace(call=AsyncMock(return_value={'status':'queued','title':'Song','output':'requesting_client'}))
+        async def raw(*args,**kwargs):raise AssertionError('music results must not be invented by the model');yield ''
+        p=SimpleNamespace(config={'tools':tools,'system_prompt':''},runtime=SimpleNamespace(workflows=None,skills=None,calendar=None,extensions=None,operations=None),music=music,raw_chat=raw)
+        values=[v async for v in chat(p,[{'role':'user','content':'播放音乐'}])]
+        music.call.assert_awaited_once_with(action='play')
+        self.assertEqual(values[-1],'准备播放《Song》。')
+        self.assertTrue(any(isinstance(v,ToolStatus) and v.phase=='completed' for v in values))
+
+    async def test_stdio_without_a_client_never_starts_host_playback(self):
+        from aihub_tools.mcp_tools import music
+        with patch.object(music,'load_tool_settings',return_value={'music':True,'music_directory':'/configured'}),patch('aihub_tools.music_player.subprocess.Popen',side_effect=AssertionError('Must not use host audio')):
+            with self.assertRaisesRegex(ValueError,'music_session_required'):await music.execute(None,'play')
+
+    async def test_decode_failure_is_not_reported_as_an_empty_library(self):
+        from aihub_tools.mcp_tools.music import spoken_summary
+        text=spoken_summary({'content':[{'text':'{"status":"failed"}'}]})
+        self.assertEqual(text,'这首音乐暂时播放失败。')

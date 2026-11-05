@@ -163,7 +163,7 @@ class AudioInput:
                 if session.state == 'standby' and session.wake_mode != 'backend':
                     self.segmenter.reset()
                     continue
-                if session.turn and not self.echo_cancellation:
+                if (session.turn or (getattr(session,'music',None) and session.music.playing)) and not self.echo_cancellation:
                     self.segmenter.reset()
                     self.buffer = b''
                     continue
@@ -187,7 +187,7 @@ class AudioInput:
                     if onset:
                         session.input_active=True
                         session.last_activity = time.monotonic()
-                        if session.turn:
+                        if session.turn or (getattr(session,'music',None) and session.music.playing):
                             if self.config['barge_in']:
                                 await session.interrupt('speech')
                             else:

@@ -180,7 +180,10 @@ class WorkflowManager:
   if name=='email.send':
    token=self.mail.grant(args['draft_id'],task['id'],task['session_id'],expected_digest=task['approved']['digest'])
    return await self.email_invoker('email_send',{**args,'task_id':task['id'],'approval_token':token})
-  if tool.get('kind')=='external':result=await self.extensions.call(name,args,self.config()['tools']['timeout_seconds'])
+  if name=='music' and getattr(pipeline,'music',None):
+   data=await pipeline.music.call(**args)
+   result={'content':[{'type':'text','text':json.dumps(data,ensure_ascii=False)}]}
+  elif tool.get('kind')=='external':result=await self.extensions.call(name,args,self.config()['tools']['timeout_seconds'])
   else:
    if name=='news':args={'source':self.config()['tools']['news_source'],'limit':self.config()['tools']['news_limit'],**args}
    env={}
