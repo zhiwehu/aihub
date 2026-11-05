@@ -94,11 +94,12 @@ async def client_api(request):
 
 def create_client_app(hub):
     from .app import HUB, gateway, same_origin
+    loopback_proxy = env_value('CLIENT_LOOPBACK_PROXY') == '1'
     allowed_origins = set(filter(None, (value.strip() for value in env_value('CLIENT_ORIGINS', '').split(','))))
     @web.middleware
     async def guard(request, handler):
         origin = request.headers.get('Origin')
-        if origin and not same_origin(request, origin) and origin not in allowed_origins:
+        if origin and not same_origin(request, origin, loopback_proxy=loopback_proxy) and origin not in allowed_origins:
             raise web.HTTPForbidden()
         if request.method == 'OPTIONS' and request.path.startswith('/client/'):
             response = web.Response(status=204)

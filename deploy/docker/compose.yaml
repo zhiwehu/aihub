@@ -13,6 +13,9 @@ services:
     environment:
       AIHUB_WEB_ROOT: /app/web
       AIHUB_CLIENT_ROOT: /app/client-web
+      # Origin compatibility only; client authentication never trusts the bridge.
+      # Valid only with the client port published on host loopback below.
+      AIHUB_CLIENT_LOOPBACK_PROXY: "1"
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
       # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
       # produces a Linux copy next to it and the planner worker loads this one.

@@ -117,12 +117,21 @@ def admin(request):
     return local_admin(request) or secrets.compare_digest(token, hub.auth['admin_token'])
 
 
-def same_origin(request, origin):
+def same_origin(request, origin, *, loopback_proxy=False):
     if origin == f'{request.scheme}://{request.host}':return True
     # Some local browser/proxy environments omit the port from Origin. Only
     # accept that exact case with browser-controlled same-origin Fetch Metadata
     # and a loopback peer/Host. Other ports, hosts, schemes and null stay denied.
-    if not local_admin(request) or request.headers.get('Sec-Fetch-Site')!='same-origin':return False
+    local_origin = local_admin(request)
+    if loopback_proxy:
+        # Explicit deployment assertion: this listener is published only on the
+        # host loopback, although the container sees the bridge gateway as peer.
+        try:
+            host = urlsplit('//'+request.host).hostname
+            local_origin = host == 'localhost' or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local_origin = False
+    if not local_origin or request.headers.get('Sec-Fetch-Site')!='same-origin':return False
     try:
         source=urlsplit(origin);target=urlsplit(f'{request.scheme}://{request.host}')
         return (source.scheme==target.scheme and source.hostname==target.hostname and

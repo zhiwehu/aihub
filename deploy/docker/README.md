@@ -246,3 +246,9 @@ Mac-owned worker path, not an external model lifecycle manager.
 startup. It never reclaims a port by killing its listener. Legacy PID files alone
 are insufficient; inspect those older worker processes and stop them explicitly
 before switching launchers. The external HTTP Linux path does not use this script.
+
+Compose sets `AIHUB_CLIENT_LOOPBACK_PROXY=1` because it publishes the client port
+on host loopback while Docker rewrites peers to the bridge gateway. This enables
+only the existing Origin-port-omission compatibility check for loopback Host plus
+browser `Sec-Fetch-Site: same-origin`; bearer authentication remains mandatory.
+Remove this assertion if publishing the client listener beyond host loopback.

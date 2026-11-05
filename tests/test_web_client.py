@@ -162,3 +162,21 @@ class WebClientTests(IsolatedAsyncioTestCase):
             return socket.closed
         self.assertTrue(await asyncio.wait_for(closed(ws), 1))
         self.assertTrue(await asyncio.wait_for(closed(pending), 1))
+
+    async def test_explicit_loopback_proxy_origin_compatibility_does_not_grant_admin_access(self):
+        from unittest import mock
+        with mock.patch.dict('os.environ', {'AIHUB_CLIENT_LOOPBACK_PROXY':'1'}):
+            client = TestClient(TestServer(create_client_app(self.hub)))
+            await client.start_server()
+            try:
+                origin='http://' + client.make_url('/').host
+                headers={'Origin':origin,'Sec-Fetch-Site':'same-origin'}
+                with mock.patch('aihub_server.app.local_admin',return_value=False):
+                    self.assertEqual((await client.get('/demo/assets/client.js',headers=headers)).status,200)
+                    self.assertEqual((await client.get('/client/v1/recordings',headers=headers)).status,401)
+                    self.assertEqual((await client.get('/client/v1/recordings',headers={**headers,**self.auth()})).status,200)
+                    self.assertEqual((await client.get('/api/config',headers=headers)).status,404)
+                    self.assertEqual((await client.get('/demo/assets/client.js',headers={'Origin':origin})).status,403)
+                    self.assertEqual((await client.get('/demo/assets/client.js',headers={**headers,'Host':'untrusted.example'})).status,403)
+            finally:
+                await client.close()
