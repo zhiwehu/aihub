@@ -8,6 +8,7 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/style.css?v=20261031c" />
     <script src="/static/app.js?v=20261101a" type="module"></script>
+    <script src="/static/client-access.js" type="module"></script>
     <script src="/static/connections.js?v=20261101b" type="module"></script>
   </head>
   <body>
@@ -30,7 +31,6 @@
           <button data-view="mcp"><span>◇</span>MCP 工具</button>
           <button data-view="logs"><span>⌘</span>事件日志</button>
           <button data-view="recordings"><span>●</span>录音</button>
-          <button data-view="lab"><span>↗</span>网页聊天</button>
         </nav>
         <div class="rail-bottom">
           <span class="dot" id="server-dot"></span
@@ -45,7 +45,7 @@
             <h1 id="page-title">运行总览</h1>
           </div>
           <div class="top-status">
-            <span class="dot"></span>Mac 本地工作台 <span id="clock"></span>
+            <span class="dot"></span>本地工作台 <span id="clock"></span>
           </div>
         </header>
         <div id="notice" class="notice" role="status" hidden></div>
@@ -68,12 +68,9 @@
               <span class="eyebrow">A PLACE FOR EVERY CONVERSATION</span>
               <h2>让每一种设备，<br />都能自然对话。</h2>
               <p>
-                统一接入声音、模型与会话。<br />从这个
-                Mac，连接你的下一个语音终端。
+                统一接入声音、模型与会话。<br />从这里，连接你的下一个语音终端。
               </p>
-              <button class="primary" id="go-lab">
-                打开网页聊天 <span>↗</span>
-              </button>
+
             </div>
             <div class="signal-art" aria-hidden="true">
               <div class="orbit one"></div>
@@ -155,6 +152,8 @@
           <div class="conversation-layout">
             <aside class="panel session-list">
               <h2>最近会话</h2>
+              <label>来源<select id="session-source"><option value="">全部来源</option><option value="web">网页客户端</option><option value="device">设备</option><option value="unknown">历史记录 / 来源未知</option></select></label>
+              <label>设备 / 客户端 ID<input id="session-device" placeholder="精确 ID"></label>
               <div id="sessions" role="region" aria-label="最近会话列表" tabindex="0"></div>
               <button class="secondary" id="more-sessions">更早会话</button>
             </aside>
@@ -179,6 +178,14 @@
           </div>
         </section>
         <section data-panel="connections" hidden>
+          <article class="panel">
+            <h2>独立网页客户端</h2>
+            <p>默认入口为本机 <a href="http://127.0.0.1:8768/demo/" target="_blank" rel="noopener noreferrer">客户端页面</a>。客户端只使用自己的凭证；远程部署请使用配置的 HTTPS 客户端地址。</p>
+            <form id="client-access-form"><label>客户端名称<input id="client-access-name" required maxlength="80" autocomplete="off"></label><button class="primary">创建客户端凭证</button></form>
+            <p id="client-access-result" role="status"></p>
+            <label id="client-access-secret" hidden>客户端凭证（仅显示一次）<input id="client-access-token" readonly type="text" autocomplete="off"></label>
+            <button id="client-access-refresh" type="button">刷新凭证列表</button><div id="client-access-list"></div>
+          </article>
           <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
           <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
           <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>
@@ -411,96 +418,6 @@
             <button id="more-logs" class="text-button">加载更早日志</button>
           </article>
         </section>
-        <section data-panel="lab" hidden>
-          <div class="section-intro">
-            <p>选好麦克风并开启，就能用声音聊天；也可以直接发送文字。</p>
-            <span class="tag">语音 / 文字</span>
-          </div>
-          <div class="lab-grid">
-            <article class="panel client-panel">
-              <div class="section-heading">
-                <h2>和 VoiceHub 聊天</h2>
-                <span class="tag" id="client-status">未连接</span>
-              </div>
-              <div class="mic-display">
-                <div id="mic-orb" class="mic-orb">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    aria-hidden="true"
-                  >
-                    <rect x="9" y="3" width="6" height="12" rx="3" />
-                    <path d="M5 10v2a7 7 0 0014 0v-2M12 19v3M8 22h8" />
-                  </svg>
-                </div>
-                <h3 id="client-phase">准备好，就开始聊</h3>
-                <p id="client-detail">可先用文字检查模型，再开启麦克风。</p>
-                <p class="hint recording-link" id="lab-recording-hint" hidden>
-                  录音模式进行中，对话已暂停。
-                  <button type="button" class="text-button" id="lab-open-recordings">
-                    查看实时转写 →
-                  </button>
-                </p>
-              </div>
-              <label
-                >此客户端的唤醒方式<select id="client-wake">
-                  <option value="manual">手动激活</option>
-                  <option value="backend">后端唤醒</option>
-                  <option value="device">客户端唤醒事件</option>
-                </select></label
-              >
-              <p class="hint" id="wake-feedback" role="status" hidden></p>
-              <label>输入麦克风<select id="microphone-device">
-                <option value="">系统默认麦克风</option>
-              </select></label>
-              <label>麦克风音量<meter id="microphone-level" min="0" max="1" value="0"></meter></label>
-              <p class="hint" id="microphone-status" role="status">麦克风未开启</p>
-              <div class="button-row">
-                <button id="connect-text" class="secondary">连接文字</button
-                ><button id="connect-mic" class="primary">开启麦克风</button>
-              </div>
-              <div class="button-row">
-                <button id="activate-client" class="secondary" disabled>
-                  激活聆听</button
-                ><button id="stop-client" class="secondary" disabled>
-                  打断回复</button
-                ><button id="disconnect-client" class="text-button" disabled>
-                  断开
-                </button>
-              </div>
-              <p class="hint">
-                浏览器需要麦克风授权。手机访问需 HTTPS；本机 localhost
-                可直接使用。后端唤醒会持续上传音频。断开连接会先保存正在进行的录音。
-              </p>
-            </article>
-            <article class="panel lab-dialogue">
-              <div class="section-heading">
-                <h2>实时对话</h2>
-                <span id="lab-session" class="mono">尚未创建会话</span>
-              </div>
-              <div id="lab-messages" aria-live="polite">
-                <div class="empty">
-                  <span>◎</span>
-                  <h3>从一句「你好」开始</h3>
-                  <p>首次本地推理需要加载模型，请留意事件日志。</p>
-                </div>
-              </div>
-              <form id="text-form">
-                <label class="sr-only" for="client-text">发送消息</label
-                ><input
-                  id="client-text"
-                  placeholder="输入消息，或直接开口说话…"
-                  maxlength="4000"
-                  required
-                /><button class="primary" id="send-text" disabled>
-                  发送 ↑
-                </button>
-              </form>
-            </article>
-          </div>
-        </section>
         <section data-panel="recordings" hidden>
           <div class="section-intro">
             <p>选择左侧录音，右侧查看文字、播放音频并导出；录音从网页客户端或喵伴开始。</p>
@@ -512,6 +429,10 @@
                 <h2>录音历史</h2>
                 <span class="tag" id="recordings-count">0 个</span>
               </div>
+              <label>来源<select id="recording-source"><option value="">全部来源</option><option value="web">网页客户端</option><option value="device">设备</option><option value="unknown">历史记录 / 来源未知</option></select></label>
+              <label>设备 / 客户端 ID<input id="recording-device" placeholder="精确 ID"></label>
+              <label>状态<select id="recording-status"><option value="">全部状态</option><option value="active">录音中</option><option value="stopped">已结束</option></select></label>
+              <label>开始时间不早于<input id="recording-after" type="datetime-local"></label>
               <button id="recordings-refresh" class="text-button recording-refresh" type="button">
                 刷新列表
               </button>

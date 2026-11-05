@@ -97,7 +97,7 @@ async function api(path, options = {}) {
 const mcp = createMcpUi({api,node,notice,onConfig:()=>{}});
 function view(name) {
   if(name === 'skills') name = 'mcp';
-  if (!["overview", "conversations", "connections", "models", "mcp", "logs", "recordings", "lab"].includes(name))
+  if (!["overview", "conversations", "connections", "models", "mcp", "logs", "recordings"].includes(name))
     name = "overview";
   state.view = name;
   document.body.dataset.view = name;
@@ -115,7 +115,6 @@ function view(name) {
     connections: "客户端接入",
     logs: "事件日志",
     recordings: "录音",
-    lab: "网页聊天",
   }[name];
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   window.dispatchEvent(new CustomEvent("aihub:view", {detail:name}));
@@ -123,7 +122,7 @@ function view(name) {
 document
   .querySelectorAll("[data-view]")
   .forEach((el) => (el.onclick = () => view(el.dataset.view)));
-$("go-lab").onclick = () => view("lab");
+
 $("go-logs").onclick = () => view("logs");
 $("mcp-settings").onclick = () => {
   $('mcp-common-settings').scrollIntoView({behavior:'smooth',block:'start'});
@@ -132,6 +131,21 @@ window.onhashchange = () => view(location.hash.slice(1));
 view(location.hash.slice(1));
 setInterval(() => ($("clock").textContent = time()), 1000);
 
+function sessionFilters() {
+  const query = new URLSearchParams();
+  if ($('session-source').value) query.set('client_type', $('session-source').value);
+  if ($('session-device').value.trim()) query.set('device_id', $('session-device').value.trim());
+  return query;
+}
+for (const id of ['session-source', 'session-device']) $(id).onchange = () => refresh().catch(e => notice(e.message, true));
+window.addEventListener('aihub:device-records', event => {
+  const {device, panel} = event.detail;
+  const prefix = panel === 'recordings' ? 'recording' : 'session';
+  $(prefix + '-source').value = '';
+  $(prefix + '-device').value = device;
+  view(panel);
+  (panel === 'recordings' ? loadRecordings() : refresh()).catch(e => notice(e.message, true));
+});
 function renderOverview() {
   const s = state.status;
   if (!s) return;
@@ -151,7 +165,7 @@ function renderOverview() {
     empty(
       devices,
       "暂时没有在线设备",
-      "前往网页聊天，验证你的第一个客户端。",
+      "连接独立网页客户端，验证你的第一个客户端。",
     );
   for (const device of s.sessions) {
     const row = node("div", "device-row");
@@ -165,6 +179,17 @@ function renderOverview() {
       text,
       node("span", "tag", labels[device.state] || device.state),
     );
+    for (const [label, panel] of [['对话记录', 'conversations'], ['录音记录', 'recordings']]) {
+      const link = node('button', 'text-button', label);
+      link.onclick = () => {
+        const prefix = panel === 'recordings' ? 'recording' : 'session';
+        $(prefix + '-source').value = '';
+        $(prefix + '-device').value = device.device_id;
+        view(panel);
+        (panel === 'recordings' ? loadRecordings() : refresh()).catch(e => notice(e.message, true));
+      };
+      row.append(link);
+    }
     devices.append(row);
   }
   const activity = $("activity");
@@ -198,7 +223,7 @@ function renderSessions() {
     );
     b.append(
       node("strong", "", s.device_id),
-      node("small", "", dateTime(s.updated) + " · " + s.id.slice(0, 8)),
+      node("small", "", (s.client_type === "web" ? "网页" : s.client_type === "device" ? "设备" : "来源未知") + " · " + dateTime(s.updated) + " · " + s.id.slice(0, 8)),
     );
     b.onclick = () => selectSession(s.id);
     b.setAttribute("aria-current", String(s.id === state.selected));
@@ -304,7 +329,7 @@ $("more-sessions").onclick = async () => {
   try {
     const last = state.sessions.at(-1);
     if (!last) return;
-    const older = await api("sessions?before=" + last.updated);
+    const older = await api("sessions?" + sessionFilters() + "&before=" + last.updated);
     state.sessions.push(...older);
     renderSessions();
     $("more-sessions").hidden = older.length < 100;
@@ -387,7 +412,7 @@ let refreshTimer;
 async function refresh() {
   const [status, sessions, logs] = await Promise.all([
     api("status"),
-    api("sessions"),
+    api("sessions?" + sessionFilters()),
     api("logs" + (state.logSession ? "?session_id=" + encodeURIComponent(state.logSession) : "")),
   ]);
   state.status = status;
@@ -423,7 +448,6 @@ function observe() {
     mcp.track(e);
     if (e.type.startsWith('tool.')) {
       if (state.selected === e.session_id) renderMessages($('messages'),state.messages,state.selected);
-      if (identity?.session_id === e.session_id) renderLab();
     }
     if (e.type.startsWith("recording.")) {
       if (e.type === "recording.transcript") applyTranscriptEvent(e);
@@ -503,7 +527,6 @@ function observe() {
   monitor.onclose = () => {
     mcp.unconfirm();
     if (state.selected) renderMessages($('messages'),state.messages,state.selected);
-    renderLab();
     $("server-dot").classList.add("off");
     $("connection-label").textContent = "事件流重连中";
     clearTimeout(monitorRetry);
@@ -525,7 +548,8 @@ function renderServices() {
     if (item.active) detail.push(item.active + " 个请求处理中");
     if (item.needs_restart) detail.push("模型已修改，请重启生效");
     if (item.error) detail.push(item.error);
-    if (!item.managed) detail.push("选择内置服务并保存后可操作");
+    if (item.health && item.provider === 'http') detail.push({available:'模型探测通过', unavailable:'服务不可达或拒绝访问', model_missing:'服务未列出配置的模型', unknown:'服务未提供可验证的模型发现接口'}[item.health] || item.health);
+    if (!item.managed) detail.push("由外部部署管理");
     status.textContent = detail.join(" · ");
     status.classList.toggle("error", ["failed", "blocked"].includes(item.state));
     for (const button of container.querySelectorAll("button")) {
@@ -755,26 +779,6 @@ $("login-form").onsubmit = async (event) => {
   }
 };
 
-// Reference client: continuous PCM input and an explicitly clearable output queue.
-let socket = null,
-  context = null,
-  stream = null,
-  capture = null,
-  micSource = null,
-  mute = null;
-let currentTurn = null,
-  nextAudioTime = 0,
-  sources = new Set(),
-  endTimer,
-  pingTimer,
-  reconnectTimer;
-let manualDisconnect = false,
-  retries = 0,
-  wantsMic = false,
-  labMessages = [],
-  partial = "",
-  clientReady = false;
-let activeWakeMode = "manual", activeWakePhrase = "";
 let recordings = [], displayedRecording = null;
 let displayedTranscript = [], displayedTranscriptState = "idle";
 let minutesTemplates = null, minutesJobs = [], minutesJob = null;
@@ -783,24 +787,6 @@ let speechMap = null;
 let allowRecordingPlayback = false;
 let displayedConfirming = false, transcriptWarning = "", transcriptFetchToken = 0;
 let recordingsRefreshTimer = null;
-let identity;
-try {
-  identity = JSON.parse(sessionStorage.getItem("aihub-client") || "null");
-} catch {
-  identity = null;
-}
-function send(value) {
-  if (socket?.readyState === WebSocket.OPEN && clientReady)
-    socket.send(JSON.stringify(value));
-}
-function setClientReady(ready) {
-  clientReady = ready;
-  $("send-text").disabled = !ready;
-  $("activate-client").disabled = !ready;
-  $("stop-client").disabled = !ready;
-  $("disconnect-client").disabled = !socket;
-  syncRecordingControls();
-}
 function formatClock(milliseconds) {
   const total = Math.max(0, Math.floor((milliseconds || 0) / 1000));
   const hours = Math.floor(total / 3600);
@@ -899,21 +885,13 @@ let seekDragging = false;
 function activeRecordings() {
   return recordings.filter((item) => item.status === "active");
 }
-function pageRecording() {
-  return activeRecordings().find(
-    (item) => item.session_id === identity?.session_id,
-  ) || null;
-}
 function recordingOrigin(recording) {
-  if (!recording) return "unknown";
-  if (recording.session_id === identity?.session_id) return "web";
-  return recording.device_id?.startsWith("web-") ? "web" : "device";
+  return recording?.client_type || 'unknown';
 }
 function recordingSource(recording) {
-  if (!recording) return "—";
-  if (recording.session_id === identity?.session_id) return "网页麦克风";
-  if (recording.device_id?.startsWith("web-")) return "网页麦克风";
-  return recording.device_id ? "喵伴 " + recording.device_id : "未知设备";
+  if (recordingOrigin(recording) === 'web') return '网页客户端 · ' + (recording.client_instance || '');
+  if (recordingOrigin(recording) === 'device') return '设备 · ' + (recording.device_id || '');
+  return '历史记录 / 来源未知';
 }
 function detailDate(seconds) {
   if (!seconds) return "—";
@@ -926,13 +904,6 @@ function detailDate(seconds) {
   });
 }
 function syncRecordingControls() {
-  const recording = !!pageRecording();
-  $("send-text").disabled = !clientReady || recording;
-  $("client-text").disabled = recording;
-  $("activate-client").disabled = !clientReady || recording;
-  $("stop-client").disabled = !clientReady || recording;
-  $("disconnect-client").disabled = !socket;
-  $("lab-recording-hint").hidden = !recording;
   renderRecordingDetail();
 }
 function resetAudio() {
@@ -1041,7 +1012,7 @@ function renderRecordingDetail() {
     ? displayedConfirming
       ? "等待停止确认"
       : isWeb ? "网页录音中" : "喵伴录音中"
-    : "已保存";
+    : (recording.samples === 0 ? "已结束 · 无音频" : "已保存");
   state.classList.toggle("active", active);
   $("recording-stop").hidden = !active;
   $("recording-stop").disabled = !active;
@@ -1073,7 +1044,7 @@ function renderRecordingDetail() {
   }
   $("recording-action-hint").textContent = active
     ? "录音结束后可以播放、下载和点击文字跳转；当前文字可以先行导出。"
-    : "播放和“下载精简音频”默认使用已去掉空白、降噪的版本；“下载原始音频”保留完整原始文件。会议纪要由本机离线生成。";
+    : "播放和“下载精简音频”默认使用已去掉空白、降噪的版本；“下载原始音频”保留完整原始文件。会议纪要由配置的后处理服务生成。";
   syncAudio(recording);
 }
 function lineSeconds(line) {
@@ -1334,11 +1305,6 @@ async function handleRecordingStarted(recording) {
     await selectDisplayedRecording(recording);
     return;
   }
-  if (recording.session_id === identity?.session_id &&
-      displayedRecording.session_id !== identity?.session_id) {
-    await selectDisplayedRecording(recording);
-    return;
-  }
   if (displayedRecording.id === recording.id) {
     displayedRecording = {...displayedRecording, ...recording};
     renderRecordingDetail();
@@ -1407,12 +1373,12 @@ function renderRecordings() {
     const top = node("span", "history-top");
     top.append(node("strong", "", dateTime(recording.started_at)));
     top.append(node("span", "history-badge" + (active ? " active" : ""),
-                    active ? "录音中" : "已保存"));
+                    active ? (recording.paused ? "已暂停" : "录音中") : (recording.samples === 0 ? "无音频" : "已保存")));
     const sub = node(
       "span",
       "history-sub",
       [
-        recordingOrigin(recording) === "web" ? "网页" : "喵伴",
+        recordingSource(recording),
         formatClock(recording.duration_ms),
         (recording.transcript_lines || 0) + " 行",
         recording.speaker_count ? recording.speaker_count + " 人" : "",
@@ -1427,7 +1393,12 @@ function renderRecordings() {
   scheduleRecordingsRefresh();
 }
 async function loadRecordings() {
-  const data = await api("recordings");
+  const query = new URLSearchParams();
+  for (const [id, key] of [['recording-source', 'client_type'], ['recording-device', 'device_id'], ['recording-status', 'status']]) {
+    if ($(id).value.trim()) query.set(key, $(id).value.trim());
+  }
+  if ($('recording-after').value) query.set('after', Date.parse($('recording-after').value) / 1000);
+  const data = await api("recordings?" + query);
   recordings = data.recordings || [];
   if (displayedRecording) {
     const fresh = recordings.find((item) => item.id === displayedRecording.id);
@@ -1441,7 +1412,7 @@ async function loadRecordings() {
   }
   if (!displayedRecording) {
     const preferred =
-      pageRecording() || activeRecordings()[0] || recordings[0] || null;
+      activeRecordings()[0] || recordings[0] || null;
     if (preferred) await selectDisplayedRecording(preferred);
   }
   renderRecordings();
@@ -2133,469 +2104,11 @@ window.addEventListener("aihub:view", (event) => {
     recordingAudio.pause();
 });
 
-function clearPlayback() {
-  clearTimeout(endTimer);
-  for (const source of sources) {
-    try {
-      source.stop();
-    } catch {}
-  }
-  sources.clear();
-  nextAudioTime = context?.currentTime || 0;
-  currentTurn = null;
-}
-document.addEventListener("click", () => {
-  // Browsers suspend an AudioContext that was not resumed inside a gesture.
-  if (context && context.state === "suspended")
-    context.resume().catch(() => {});
-});
-async function audioContext() {
-  if (!context || context.state === "closed") {
-    // Let Chrome negotiate the AirPods hardware rate; capture.js converts to 16 kHz.
-    context = new AudioContext();
-    await context.audioWorklet.addModule("/static/capture.js");
-  }
-  await context.resume();
-  if (context.state !== "running")
-    notice("浏览器暂停了音频输出，点一下页面继续播放。", true);
-  return context;
-}
-let microphonePackets = 0, microphoneFrames = 0, microphonePeak = 0;
-let microphoneLastFrame = 0, microphoneStarted = 0;
-function renderMicrophone() {
-  const track = stream?.getAudioTracks()[0];
-  const target = $("microphone-status");
-  if (!track) { target.textContent = "麦克风未开启"; $("microphone-level").value = 0; return; }
-  const age = performance.now() - (microphoneLastFrame || microphoneStarted);
-  const state = track.readyState !== "live" ? "输入已断开，请重新开启麦克风" :
-    track.muted ? "输入设备暂无音频" : context?.state !== "running" ? "音频已暂停，请点击开启麦克风恢复" :
-    age > 3000 ? "没有采集到音频帧，请重新开启麦克风或切换输入设备" :
-    microphonePeak < .001 ? "输入接近静音，请检查麦克风选择和耳机佩戴" : "正在采集";
-  target.textContent = [track.label || "默认输入", state,
-    (context?.sampleRate || "—") + " Hz → 16000 Hz",
-    "采集 " + microphoneFrames + " 帧 / 已上传 " + microphonePackets + " 帧"].join(" · ");
-  $("microphone-level").value = Math.min(1, microphonePeak * 5);
-}
-async function refreshMicrophones() {
-  if (!navigator.mediaDevices?.enumerateDevices) return;
-  const select = $("microphone-device"), selected = select.value;
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  select.replaceChildren();
-  const automatic = node("option", "", "系统默认麦克风"); automatic.value = "";
-  select.append(automatic);
-  let index = 0;
-  for (const device of devices.filter(d => d.kind === "audioinput")) {
-    const option = node("option", "", device.label || "麦克风 " + (++index));
-    option.value = device.deviceId; select.append(option);
-  }
-  select.value = [...select.options].some(o => o.value === selected) ? selected : "";
-}
-async function microphone() {
-  if (stream) return;
-  try {
-    const device = $("microphone-device").value;
-    // Opening Bluetooth input may change the hardware route and its sample rate.
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true,
-        channelCount: 1, ...(device ? {deviceId: {exact: device}} : {})}, video: false,
-    });
-    // Discard the old output route before constructing the input graph.
-    if (context && context.state !== "closed") await context.close();
-    context = null;
-    await audioContext();
-    micSource = context.createMediaStreamSource(stream);
-    capture = new AudioWorkletNode(context, "aihub-capture");
-    mute = context.createGain(); mute.gain.value = 0;
-    micSource.connect(capture).connect(mute).connect(context.destination);
-    microphonePackets = microphoneFrames = 0;
-    microphonePeak = 0;
-    microphoneLastFrame = 0; microphoneStarted = performance.now();
-    capture.port.onmessage = (event) => {
-      if (event.data?.type === "level") {
-        microphonePeak = event.data.peak;
-        microphoneLastFrame = performance.now();
-        renderMicrophone();
-        return;
-      }
-      microphoneFrames++;
-      microphoneLastFrame = performance.now();
-      if (socket?.readyState === WebSocket.OPEN && clientReady) {
-        if (socket.bufferedAmount > 64000) {
-          notice("上传音频积压，已断开以避免延迟累积。", true); disconnect(); return;
-        }
-        socket.send(event.data);
-        microphonePackets++;
-      }
-    };
-    const track = stream.getAudioTracks()[0];
-    track.onmute = track.onunmute = renderMicrophone;
-    track.onended = () => { renderMicrophone(); notice("麦克风已断开，请选择输入设备后重新开启。", true); };
-    capture.onprocessorerror = () => notice("音频采集已停止，请重新开启麦克风。", true);
-    renderMicrophone();
-    await refreshMicrophones().catch(() => {});
-    syncRecordingControls();
-  } catch (e) {
-    stopMicrophone();
-    throw e;
-  }
-}
-function stopMicrophone() {
-  if (stream) for (const track of stream.getTracks()) {
-    track.onmute = track.onunmute = track.onended = null;
-    track.stop();
-  }
-  stream = null;
-  if (capture) { capture.port.onmessage = null; capture.onprocessorerror = null; }
-  micSource?.disconnect(); capture?.disconnect(); mute?.disconnect();
-  capture = null; micSource = null; mute = null;
-  renderMicrophone();
-  syncRecordingControls();
-}
-setInterval(() => { if (stream) renderMicrophone(); }, 1000);
-navigator.mediaDevices?.addEventListener("devicechange", () => refreshMicrophones().catch(() => {}));
-$("microphone-device").onchange = () => {
-  if (stream) connect(true);
-};
-refreshMicrophones().catch(() => {});
-
-function phase(name, detail) {
-  $("client-phase").textContent = labels[name] || name;
-  $("client-detail").textContent =
-    detail || "我在听。说完一句话后稍等，就会收到回复。";
-  $("mic-orb").className = "mic-orb " + name;
-}
-async function loadLabMessages() {
-  if (!identity?.session_id) return;
-  const sid = identity.session_id;
-  const messages = await api("sessions/" + sid + "/messages");
-  await mcp.loadCalls(sid,messages);
-  if (identity?.session_id !== sid) return;
-  labMessages = messages;
-  renderLab();
-}
-function renderLab() {
-  renderMessages($("lab-messages"), labMessages, identity?.session_id, false);
-  if (partial) {
-    const n = bubble({
-      role: "assistant",
-      content: partial,
-      status: "streaming",
-      created: Date.now() / 1000,
-    });
-    $("lab-messages").append(n);
-    $("lab-messages").scrollTop = $("lab-messages").scrollHeight;
-  }
-}
-async function connect(useMic = false) {
-  manualDisconnect = false;
-  wantsMic = useMic;
-  $("connect-text").disabled = $("connect-mic").disabled = true;
-  try {
-    if (socket) {
-      const old = socket;
-      socket = null;
-      setClientReady(false);
-      old.close();
-      setTimeout(() => loadRecordings().catch(() => {}), 500);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    clearPlayback();
-    stopMicrophone();
-    if (useMic) await microphone();
-    else await audioContext();
-    openClient();
-  } catch (e) {
-    stopMicrophone();
-    $("connect-text").disabled = $("connect-mic").disabled = false;
-    notice("无法开启客户端：" + e.message, true);
-  }
-}
-function openClient() {
-  clearTimeout(reconnectTimer);
-  const ws = (socket = new WebSocket(
-    (location.protocol === "https:" ? "wss://" : "ws://") +
-      location.host +
-      "/ws",
-  ));
-  setClientReady(false);
-  $("disconnect-client").disabled = false;
-  $("client-status").textContent = retries ? "正在重连" : "正在连接";
-  ws.onopen = () => {
-    if (socket !== ws) return;
-    const settings = stream?.getAudioTracks()[0]?.getSettings() || {};
-    const hello = {
-      type: "hello",
-      version: 1,
-      device_id: "web-" + (identity?.device || crypto.randomUUID().slice(0, 8)),
-      wake_mode: wantsMic ? $("client-wake").value : "manual",
-      audio: { format: "pcm_s16le", sample_rate: 16000 },
-      capabilities: {
-        echo_cancellation: !!settings.echoCancellation,
-        continuous_audio: wantsMic,
-      },
-    };
-    if (identity?.session_id) {
-      hello.session_id = identity.session_id;
-      hello.resume_token = identity.resume_token;
-    }
-    ws.send(JSON.stringify(hello));
-    clearInterval(pingTimer);
-    pingTimer = setInterval(() => send({ type: "ping" }), 15000);
-  };
-  ws.onmessage = (event) => {
-    void (async () => {
-      if (socket !== ws) return;
-      const e = JSON.parse(event.data);
-      mcp.track(e);
-      if (e.type.startsWith('tool.')) renderLab();
-      if (e.type === "hello") {
-        $("notice").hidden = true;
-        retries = 0;
-        identity = {
-          device: identity?.device || crypto.randomUUID().slice(0, 8),
-          session_id: e.session_id,
-          resume_token: e.resume_token,
-        };
-        sessionStorage.setItem("aihub-client", JSON.stringify(identity));
-        activeWakeMode = e.wake_mode;
-        activeWakePhrase = e.wake_phrase || "";
-        $("wake-feedback").hidden = activeWakeMode !== "backend";
-        $("wake-feedback").textContent = '待机时请说“' + activeWakePhrase + '”唤醒，我会回应“我在，请说。”。待机后仍可再次唤醒。';
-        setClientReady(true);
-        $("connect-text").disabled = $("connect-mic").disabled = false;
-        $("client-status").textContent =
-          "已连接" + (wantsMic ? " · 麦克风开启" : "");
-        $("lab-session").textContent = e.session_id.slice(0, 12);
-        await loadLabMessages();
-        await loadRecordings().catch(() => {});
-        if (e.wake_mode !== "backend") send({ type: "session.activate" });
-        else phase("standby", "请说“" + activeWakePhrase + "”唤醒；无需点击激活聆听。");
-        if (wantsMic && !e.capabilities.barge_in)
-          notice("客户端未声明有效回声消除，自然插话未开启；仍可点击打断。");
-        return;
-      }
-      if (e.type === "wake.check") {
-        $("wake-feedback").hidden = false;
-        $("wake-feedback").textContent = e.matched
-          ? '已匹配“' + e.phrase + '”，进入聆听。'
-          : '未匹配“' + e.phrase + '”。本次识别：' + (e.heard || '（未识别到文字）') + '。请完整说出唤醒词。';
-        return;
-      }
-      if (e.type === "error") {
-        notice(
-          (e.code || "error") + "：" + (e.message || "请查看事件日志"),
-          true,
-        );
-        if (e.code === "invalid_resume") {
-          identity = null;
-          sessionStorage.removeItem("aihub-client");
-        }
-        return;
-      }
-      if (e.type === "session.state") {
-        let detail;
-        if (e.state === "recording") {
-          detail = "录音中，只保存声音，不回答。实时转写在「录音」页。";
-          if (!displayedRecording || displayedRecording.status !== "active")
-            loadRecordings().catch(() => {});
-        } else if (e.state === "standby") {
-          detail = activeWakeMode === "backend"
-            ? "请说“" + activeWakePhrase + "”唤醒。"
-            : "等待唤醒或手动激活。";
-        }
-        phase(e.state, detail);
-      }
-      if (e.type === "recording.started") {
-        handleRecordingStarted(e.recording).catch(() => {});
-        loadRecordings().catch(() => {});
-        return;
-      }
-      if (e.type === "recording.confirming") {
-        if (displayedRecording?.id === e.recording?.id) {
-          displayedConfirming = true;
-          renderRecordingDetail();
-          renderTranscript();
-        }
-        return;
-      }
-      if (e.type === "recording.confirm_expired") {
-        if (displayedRecording?.id === e.recording?.id) {
-          displayedConfirming = false;
-          renderRecordingDetail();
-          renderTranscript();
-        }
-        return;
-      }
-      if (e.type === "recording.stopped") {
-        handleRecordingStopped(e.recording).catch(() => {});
-        loadRecordings().catch(() => {});
-        return;
-      }
-      if (e.type === "recording.transcript") {
-        applyTranscriptEvent(e);
-        return;
-      }
-      if (e.type === "recording.transcription_unavailable") {
-        applyTranscriptionUnavailable(e);
-        return;
-      }
-      if (e.type === "recording.speaker_unavailable") {
-        notice(e.message || "发言人区分暂时不可用。", true);
-        return;
-      }
-      if (e.type === "recording.diarized") {
-        if (displayedRecording?.id === e.recording_id) {
-          loadRecordings().catch(() => {});
-          loadDisplayedTranscript(displayedRecording).catch(() => {});
-          notice("发言人重分析完成，逐字稿已更新。");
-        }
-        return;
-      }
-      if (e.type === "recording.minutes_started") {
-        notice("逐字稿已更新，正在自动生成默认会议纪要。");
-        return;
-      }
-      if (e.type === "recording.deleted") {
-        handleRecordingDeleted(e.recording_id);
-        loadRecordings().catch(() => {});
-        return;
-      }
-      if (e.type === "recording.input_ignored") {
-        notice(e.message, true);
-        return;
-      }
-      if (e.type === "reply.delta") {
-        partial += e.text;
-        renderLab();
-      }
-      if (e.type === "message.user") {
-        partial = "";
-        await loadLabMessages();
-      }
-      if (e.type === "audio.start") {
-        clearPlayback();
-        currentTurn = e.turn_id;
-      }
-      if (e.type === "audio.chunk" && e.turn_id === currentTurn) {
-        const binary = atob(e.data);
-        const array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-        const pcm = new DataView(array.buffer),
-          buffer = context.createBuffer(1, array.length / 2, 16000),
-          samples = buffer.getChannelData(0);
-        for (let i = 0; i < samples.length; i++)
-          samples[i] = pcm.getInt16(i * 2, true) / 32768;
-        if (nextAudioTime - context.currentTime > 0.5) {
-          notice("播放队列超过 500ms，已请求停止。", true);
-          clearPlayback();
-          send({ type: "interrupt" });
-          return;
-        }
-        const source = context.createBufferSource();
-        source.buffer = buffer;
-        source.connect(context.destination);
-        nextAudioTime = Math.max(nextAudioTime, context.currentTime + 0.015);
-        source.start(nextAudioTime);
-        nextAudioTime += buffer.duration;
-        sources.add(source);
-        source.onended = () => sources.delete(source);
-      }
-      if (e.type === "audio.end" && e.turn_id === currentTurn) {
-        const tid = e.turn_id;
-        clearTimeout(endTimer);
-        endTimer = setTimeout(
-          () => {
-            if (tid === currentTurn)
-              send({ type: "playback.done", turn_id: tid });
-          },
-          Math.max(0, (nextAudioTime - context.currentTime) * 1000) + 60,
-        );
-      }
-      if (e.type === "playback.clear") {
-        clearPlayback();
-        partial = "";
-        await loadLabMessages();
-      }
-      if (e.type === "turn.completed") {
-        partial = "";
-        await loadLabMessages();
-      }
-    })().catch((e) => notice("客户端同步失败：" + e.message, true));
-  };
-  ws.onclose = () => {
-    if (socket !== ws) return;
-    socket = null;
-    setClientReady(false);
-    clearInterval(pingTimer);
-    clearPlayback();
-    partial = "";
-    setTimeout(() => loadRecordings().catch(() => {}), 500);
-    $("client-status").textContent = "已断开";
-    $("connect-text").disabled = $("connect-mic").disabled = false;
-    if (!manualDisconnect && retries < 8) {
-      retries++;
-      phase("重新连接中", "网络中断，正在恢复会话。旧音频不会重播。");
-      reconnectTimer = setTimeout(
-        openClient,
-        Math.min(10000, 500 * 2 ** retries),
-      );
-    } else {
-      stopMicrophone();
-      phase("连接已结束", "历史记录已保留。");
-    }
-  };
-  ws.onerror = () => ws.close();
-}
-function disconnect() {
-  manualDisconnect = true;
-  clearTimeout(reconnectTimer);
-  clearInterval(pingTimer);
-  clearPlayback();
-  stopMicrophone();
-  socket?.close();
-  setClientReady(false);
-  setTimeout(() => loadRecordings().catch(() => {}), 500);
-}
-$("connect-text").onclick = () => connect(false);
-$("connect-mic").onclick = () => connect(true);
-$("disconnect-client").onclick = disconnect;
 $("recording-stop").onclick = () => stopDisplayedRecording();
+for (const id of ['recording-source', 'recording-device', 'recording-status', 'recording-after']) $(id).onchange = () => loadRecordings().catch(e => notice(e.message, true));
 $("recordings-refresh").onclick = () =>
   loadRecordings().catch((error) => notice("刷新录音失败：" + error.message, true));
-$("lab-open-recordings").onclick = () => view("recordings");
-$("activate-client").onclick = () => {
-  context?.resume().catch(() => {});
-  send({ type: "session.activate" });
-};
-$("client-wake").onchange = () => {
-  $("wake-feedback").hidden = $("client-wake").value !== "backend";
-  $("wake-feedback").textContent = '待机时请说“' + (state.config?.wake.phrase || "小宝同学") + '”唤醒，无需点击激活聆听。';
-  if (socket) connect(wantsMic);
-};
-$("stop-client").onclick = () => {
-  const recording = pageRecording();
-  if (recording) {
-    stopRecordingFromList(recording);
-    return;
-  }
-  clearPlayback();
-  send({ type: "interrupt" });
-};
-$("text-form").onsubmit = (event) => {
-  event.preventDefault();
-  if (pageRecording()) {
-    notice("录音模式中不处理文字对话；请先停止录音。", true);
-    return;
-  }
-  const text = $("client-text").value.trim();
-  if (text && clientReady) {
-    send({ type: "input.text", text });
-    $("client-text").value = "";
-  }
-};
 window.addEventListener("pagehide", () => {
-  manualDisconnect = true;
-  disconnect();
   monitor?.close();
   clearTimeout(monitorRetry);
 });

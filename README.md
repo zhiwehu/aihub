@@ -1,7 +1,7 @@
 # aihub-web
 
-AIHub 的网页控制台与语音聊天客户端：模型配置、连接实验室、录音工作台、MCP 工具、
-任务链、日程与统计页。
+AIHub 的管理控制台：模型配置、客户端接入与凭证管理、记录回放、MCP 工具、
+任务链、日程与统计页。聊天和麦克风录音已移至独立客户端。
 
 纯静态文件，没有构建步骤，也没有运行时依赖。
 
@@ -10,10 +10,10 @@ AIHub 的网页控制台与语音聊天客户端：模型配置、连接实验�
 ```text
 public/
 ├── index.html            单页外壳
-├── app.js                主逻辑（约 92 KB，尚未拆分模块）
+├── app.js                管理与记录逻辑
 ├── api-response.mjs      响应解码：非 JSON 的失败也要说清 HTTP 状态
 ├── connections.js        客户端接入向导、设备与固件状态
-├── capture.js            浏览器麦克风采集
+├── client-access.js      独立客户端凭证管理
 ├── mcp-*.js/.mjs         MCP 工具、扩展、设置、调用记录
 ├── workflows-ui.js       任务链
 ├── skills-ui.js          技能
@@ -127,3 +127,16 @@ worker）。`app.js` 仍是单个大文件，没有构建工具；界面文案�
 截图：`/tmp/aihub-connections.png`、`/tmp/aihub-narrow.png`（临时文件，不入库）。
 
 原创代码 MIT（见 [LICENSE](LICENSE)）。
+
+## Independent client and record sources
+
+The browser chat/recording client lives in `aihub-server/clients/web-demo/` and
+runs at the separate client listener (default localhost:8768/demo/). This console
+never requests microphone access. Create/revoke named client credentials under
+client connections; do not put administrator tokens in client scripts.
+
+Conversation/recording lists support source and exact device ID filtering. Online
+device entries link to those same global lists with the device filter selected.
+Recordings also support status/start-time filters. Old records are explicitly
+unknown and are not attributed using display-name guesses. External HTTP model
+status reports a read-only discovery probe without offering process controls.

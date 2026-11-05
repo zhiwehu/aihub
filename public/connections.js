@@ -68,7 +68,7 @@ function drawGuide() {
   for(const text of client.steps)steps.append(el('li',text));
   $('client-install-note').textContent=client.installation;
   const actions=$('client-install-actions');actions.replaceChildren();
-  if(client.id==='web') {const start=link('打开网页，开始聊天','#lab');start.classList.add('primary');actions.append(start);}
+  if(client.id==='web') {const start=link('打开独立网页客户端','http://127.0.0.1:8768/demo/');start.classList.add('primary');actions.append(start);}
   else {
     if(echoear&&flasher==='missing')actions.append(el('p','USB 连接与配网助手没有加载：服务端在 /firmware 下没找到 aihub-firmware 的 flash 目录。可以先下载连接配置手动配网，或让管理员设置 AIHUB_FIRMWARE_ROOT 后重启服务端。','hint'));
     if(client.firmware) {
@@ -110,6 +110,11 @@ function drawDevices() {
     const row=el('div',undefined,'connection-device');
     row.append(el('strong',device.device_id),el('span',labels[device.protocol]||device.protocol,'tag'),
       el('span',labels[device.state]||device.state,'tag'),el('small',device.id.slice(0,12),'mono'));
+    for (const [text, panel] of [['对话记录', 'conversations'], ['录音记录', 'recordings']]) {
+      const button = el('button', text); button.type = 'button';
+      button.onclick = () => window.dispatchEvent(new CustomEvent('aihub:device-records', {detail:{device:device.device_id,panel}}));
+      row.append(button);
+    }
     if(device.audio)row.append(el('p',`音频包：接收 ${device.audio.received} · 发送 ${device.audio.sent} · 缺包 ${device.audio.lost} · 队列丢包 ${device.audio.dropped}`,'hint'));
     row.append(sessionButtons(device));target.append(row);
   }
