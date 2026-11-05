@@ -12,13 +12,13 @@ class AcknowledgementTests(IsolatedAsyncioTestCase):
                 yield ''
             finally:closed.set()
         result=await acknowledgement(SimpleNamespace(raw_chat=raw_chat),[],'查询杭州天气',timeout=.01)
-        self.assertIn('查询杭州天气',result)
+        self.assertIn('天气',result)
         self.assertTrue(closed.is_set())
 
     async def test_premature_completion_is_rejected(self):
         async def raw_chat(*args,**kwargs):yield '已完成，结果是晴天。'
         result=await acknowledgement(SimpleNamespace(raw_chat=raw_chat),[],'查询天气')
-        self.assertIn('查询天气',result)
+        self.assertIn('天气',result)
         self.assertNotIn('已完成',result)
 
     async def test_logged_misleading_feedback_never_reaches_the_user(self):
@@ -35,17 +35,29 @@ class AcknowledgementTests(IsolatedAsyncioTestCase):
                 self.assertNotEqual(result,bad)
                 for forbidden in ('刚查到','新品','智慧社区','无法获取','城市是哪里'):
                     self.assertNotIn(forbidden,result)
-                self.assertIn(request.strip('？'),result)
+                self.assertIn('天气' if '天气' in request else '新闻',result)
 
     async def test_structured_focus_must_be_a_literal_part_of_current_request(self):
         async def raw_chat(*args,**kwargs):yield '{"focus":"合肥新站区将建智慧社区","variant":0}'
         result=await acknowledgement(SimpleNamespace(raw_chat=raw_chat),[], '最近有什么新闻？')
         self.assertNotIn('智慧社区',result)
-        self.assertIn('最近有什么新闻',result)
+        self.assertIn('新闻',result)
 
     async def test_valid_focus_and_variant_are_rendered_without_model_prose(self):
         async def raw_chat(*args,**kwargs):yield '{"focus":"杭州天气","variant":1}'
         result=await acknowledgement(SimpleNamespace(raw_chat=raw_chat),[], '查询杭州天气')
-        self.assertIn('杭州天气',result)
-        self.assertIn('核对',result)
+        self.assertIn('天气',result)
+        self.assertIn('看看',result)
         self.assertNotIn('{',result)
+
+    async def test_feedback_is_short_and_does_not_quote_the_question(self):
+        from aihub_server.acknowledgement import feedback
+        for request,topic in [('今天天气怎么样？','天气'),('最近有什么新闻','新闻'),('最近我有哪些日程？','日程')]:
+            with self.subTest(request=request):
+                for variant in range(3):
+                    result=feedback(request,{'focus':request.strip('？'),'variant':variant})
+                    self.assertIn(topic,result)
+                    self.assertLessEqual(len(result),22)
+                    self.assertNotIn('“',result)
+                    for formal in ('核实','核查','向你说明','确认后','关于'):
+                        self.assertNotIn(formal,result)

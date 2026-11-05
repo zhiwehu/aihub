@@ -27,8 +27,24 @@ def router_prompt(config, available):
     '可用工具：'+json.dumps(available, ensure_ascii=False))
 
 
+async def llm_plan(pipeline,history,cfg,available):
+    from .extension_routing import is_followup
+    users=[m for m in history if m.get('role')=='user' and isinstance(m.get('content'),str)]
+    router=users[-2:] if len(users)>1 and is_followup(users[-1]['content']) else users[-1:]
+    plan=''
+    async with asyncio.timeout(20),contextlib.aclosing(pipeline.raw_chat(router,system_prompt=router_prompt(cfg,available))) as source:
+        async for text in source:
+            plan+=text
+            if len(plan)>4096:raise ValueError('plan_limit')
+    return parse_plan(plan,{**cfg,**{t['name']:True for t in available}},available)
+
+
 async def rex_plan(pipeline,history,cfg):
-    result=await pipeline.runtime.planner.plan(history,cfg,getattr(pipeline,'_previous_tool_plan',None))
+    try:result=await pipeline.runtime.planner.plan(history,cfg,getattr(pipeline,'_previous_tool_plan',None))
+    except (PlannerError,ValueError,TimeoutError):
+        available=[tool for tool in catalogue() if cfg.get(tool['name'])]
+        name,arguments=await llm_plan(pipeline,history,cfg,available)
+        result={'status':'ready' if name else 'chat','tool':name,'arguments':arguments,'planner':'llm_fallback'}
     status=result.get('status')
     if status not in ('chat','ready','clarify','extract'):raise PlannerError('planner_invalid_result')
     tool=result.get('tool')
@@ -113,13 +129,19 @@ async def chat(pipeline, history):
         pipeline._previous_tool_plan=cached_rex
         if cached_rex['status']=='clarify':
             yield cached_rex['message'];return
+    news_match=bool(cfg.get('news') and re.fullmatch(r'(?:(?:请|帮我|麻烦你))?(?:(?:查一下|查询|查查|看看|看一下|播报|说一下|读)(?:一下)?)?(?:(?:最近|最新|今天|今日|现在|这几天|近期)的?)?(?:有(?:什么|哪些))?(?:新闻|资讯)(?:有哪些|有什么|吗)?',compact))
+    if workflow is None and news_match:
+        from .slot_normalizer import normalize_spans
+        cached_rex=normalize_spans('news','',[],cfg)
+        pipeline._previous_tool_plan=cached_rex
     if cached_rex is None and workflow is None and music_plan(latest) is None and files is None and not music_refusal(latest) and cfg.get('planner')=='rex' and any(cfg.get(k) for k in ('shopping_list','timer','item_memory')) and not is_conversational_turn(latest) and calendar_answer(latest) is None:
         if re.search(r'购物|采购|清单|计时|倒数|倒计时|放哪|位置|记住|物品|存放',latest):yield ToolNotice('tool_planning','')
         try:cached_rex=await rex_plan(pipeline,history,cfg)
         except (PlannerError,ValueError,TimeoutError):
-            yield '本地工具规划器暂时不可用，请稍后重试。';return
+            yield ToolStatus('tool_planning','failed',code='planning_failed')
+            yield '这次没能确定查询内容，请换个说法再试。';return
         from .everyday_chat import candidate as everyday_candidate,fallback as everyday_fallback,context_text as everyday_context,inconsistent as everyday_inconsistent
-        if (cached_rex['status']!='extract' or everyday_inconsistent(cached_rex,latest)) and everyday_candidate(everyday_context(pipeline,history)):
+        if cached_rex.get('planner')!='llm_fallback' and (cached_rex['status']!='extract' or everyday_inconsistent(cached_rex,latest)) and everyday_candidate(everyday_context(pipeline,history)):
             try:
                 supplemental=await everyday_fallback(pipeline,history)
                 if (supplemental is not None and everyday_inconsistent(supplemental,latest)) or (supplemental is None and everyday_inconsistent(cached_rex,latest)):
@@ -182,7 +204,7 @@ async def chat(pipeline, history):
     music=music_plan(latest) if cfg.get('music') else None
     candidates=extra+[t for t in available if (t['name']=='music' and music_candidate(latest)) or (t['name']=='file_organizer' and file_candidate(latest))]
     dynamic_name=None;dynamic_arguments={}
-    if mode=='rex' and candidates and music is None and files is None:
+    if mode=='rex' and candidates and music is None and files is None and not (match or news_match):
         # A fixed-label classifier cannot decide that a previously unseen tool
         # is preferable to its own candidate. Check the dynamic extension list
         # independently before accepting the core classifier's result.
@@ -191,9 +213,9 @@ async def chat(pipeline, history):
             # 扩展规划器不可用不应打断这一轮：静默退回核心工具/普通聊天，
             # 下句话仍会重新尝试规划，用户不会听到「规划暂时不可用」。
             dynamic_name,dynamic_arguments=None,{}
-    if cached_rex is not None and match:
+    if cached_rex is not None and (match or news_match):
         name,arguments=cached_rex['tool'],cached_rex['arguments']
-        mode='weather_rules'
+        mode='news_rules' if news_match else 'weather_rules'
     elif files is not None:
         name,arguments='file_organizer',files
         mode='file_rules';pipeline._previous_tool_plan=None
@@ -207,32 +229,19 @@ async def chat(pipeline, history):
         try:
             result=cached_rex or await rex_plan(pipeline,history,cfg)
         except (PlannerError,ValueError,TimeoutError):
-            yield '本地工具规划器暂时不可用，请稍后再试。'
+            yield ToolStatus('tool_planning','failed',code='planning_failed')
+            yield '这次没能确定查询内容，请换个说法再试。'
             return
         if result['status']=='clarify':
             yield result.get('message','查询参数还不明确，请再说具体一点。')
             return
         name,arguments=result['tool'],result['arguments']
+        mode=result.get('planner',mode)
 
     else:
-        prompt = router_prompt(cfg, available)
-        # The router only needs the request itself. Handing it the whole
-        # transcript makes the small local model answer as the assistant - the
-        # reply parses as junk and the caller reports a planner failure - so send
-        # the latest user turn, plus the previous one for follow-ups like "那明天呢".
-        from .extension_routing import is_followup
-        users=[m for m in history if m.get('role')=='user' and isinstance(m.get('content'),str)]
-        router=users[-1:]
-        if len(users)>1 and is_followup(users[-1]['content']):router=users[-2:]
-        plan = ''
-        try:
-            async with asyncio.timeout(20), contextlib.aclosing(pipeline.raw_chat(router, system_prompt=prompt)) as source:
-                async for text in source:
-                    plan += text
-                    if len(plan) > 4096:
-                        raise ValueError('plan_limit')
-            name, arguments = parse_plan(plan, {**cfg,**{t['name']:True for t in extra}},available)
-        except (ValueError, TimeoutError):
+        try:name,arguments=await llm_plan(pipeline,history,cfg,available)
+        except (ValueError,TimeoutError):
+            yield ToolStatus('tool_planning','failed',code='planning_failed')
             yield '这次没能正确确定查询内容，请换个说法再试一下。'
             return
     if name is None:

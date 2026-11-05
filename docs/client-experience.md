@@ -33,8 +33,8 @@ including after reconnect. Work/results remain stored. A result interrupted befo
 any audio begins stays pending and can be announced when the session is quiet.
 Server restart never automatically re-executes side-effecting tool work.
 
-Validation (2026-11-05): server 320 passed + 25 subtests, with only the documented
-pre-existing wake-phrase failure; tools 84 passed + 15 subtests; admin 14 Node tests;
+Validation (2026-11-05): server 321 passed + 28 subtests, with only the documented
+pre-existing wake-phrase failure; tools 87 passed + 15 subtests; admin 14 Node tests;
 artifact integrity 1 test; independent client 9 Node tests. Real browser validated
 connection, calendar tool history, chat/recording menu switching and desktop/mobile
 layout. Full hardware microphone interruption still needs the user's live test.
@@ -61,3 +61,30 @@ including work still running, while preserving execution and stored results. The
 muted delivery state survives subsequent operation updates and server restarts;
 new tasks and other sessions remain unaffected. Ordinary speech interruption
 continues to stop only the current playback. No existing reminder IDs are changed.
+
+
+## Natural preparation feedback and news fallback
+
+Preparation feedback now uses short, intent-specific conversational wording such
+as “我查一下今天的天气。” and “我看看最近的新闻。”. It never quotes a whole
+question or emits model-generated facts. The bounded structured selector still
+controls only a validated wording variant and literal focus; server-owned phrases
+remain the boundary against hallucinated pre-tool answers.
+
+The test deployment was configured for Rex but had no Rex runtime, base model or
+adapters. Basic latest-news requests now route directly to the configured news
+source and count. Other core requests fall back to the configured language model
+when Rex fails, retaining bounded routing input, schema validation and explicit
+llm_fallback provenance. If both planners fail, tool-planning emits a failed event
+so the operation cannot be displayed as completed.
+
+Local music diagnosis: the configured Mac directory is not mounted into Docker,
+and the current MusicPlayer requires /usr/bin/afplay. Mounting the library alone
+cannot make a Linux container output to Mac speakers; playback destination must
+be chosen before changing that path. No music files or playback configuration
+were modified by this diagnosis.
+
+Deployed smoke verification used the current model for weather/news/calendar first
+feedback and confirmed short, unquoted preparation wording. The configured RSS
+news tool completed successfully with Rex deliberately unavailable. No user
+operation, recording or playback was created by the smoke check.

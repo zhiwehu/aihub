@@ -159,7 +159,7 @@ class BackgroundSessionTests(unittest.IsolatedAsyncioTestCase):
   self.pipeline.raw_chat=raw_chat
   await self.session.submit('慢查询')
   await self.started.wait()
-  await self.wait_for(lambda:any('我先核对“慢查询”的相关内容' in e.get('text','') for e in self.events))
+  await self.wait_for(lambda:any('我先看看慢查询' in e.get('text','') for e in self.events))
   self.assertEqual(prompts[0][0][-1]['content'],'慢查询')
   self.assertLessEqual(prompts[0][1]['max_tokens'],80)
 

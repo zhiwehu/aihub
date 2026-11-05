@@ -14,15 +14,27 @@ def feedback(request, selection=None):
         if (isinstance(chosen,str) and 1<=len(chosen)<=24 and chosen in subject
                 and type(selection['variant']) is int and 0<=selection['variant']<3):
             focus,variant=chosen,selection['variant']
-    topic=f'“{focus}”' if focus else '这件事'
-    if re.search(r'天气|气温|下雨|降雨|新闻|资讯',subject):
-        lines=(f'我先核查{topic}的相关信息，确认后再回复你。',
-               f'关于{topic}，我先核对信息再回复你。',
-               f'我会先核实{topic}，再向你说明结果。')
+    # Render only preparation verbs. Topic words come from the current request,
+    # never from a model's unverified factual answer or the quoted whole question.
+    if re.search(r'天气|气温|下雨|降雨',subject):
+        days=[day for day in ('今天','明天','后天') if day in subject]
+        topic=(days[0]+'的' if len(days)==1 else '')+'天气'
+        lines=(f'我查一下{topic}。',f'我看看{topic}情况。',f'我来查查{topic}。')
+    elif re.search(r'新闻|资讯',subject):
+        themes=[word for word in ('科技','国际','国内','体育','财经') if word in subject]
+        topic=(themes[0] if len(themes)==1 else '最近的')+'新闻'
+        lines=(f'我看看{topic}。',f'我找几条{topic}。',f'我查一下{topic}。')
+    elif re.search(r'日程|提醒|安排',subject):
+        if re.search(r'取消|删除',subject):lines=('我来处理这条日程。','我先找一下这条日程。','我看看要取消的日程。')
+        elif re.search(r'提醒我|添加|创建|设置',subject):lines=('我来看看这条提醒。','我先看看提醒的时间和事项。','我来处理这条日程。')
+        else:lines=('我看看你的日程。','我查一下你的日程。','我翻一下日程记录。')
+    elif re.search(r'音乐|歌曲|播放|首歌',subject):
+        lines=('我找一下本地音乐。','我看看曲库里有哪些歌。','我找找适合播放的本地音乐。')
+    elif re.search(r'CPU|内存|磁盘|电脑状态',subject,re.I):
+        lines=('我看看电脑状态。','我查一下这台电脑的运行情况。','我看一眼当前的系统信息。')
     else:
-        lines=(f'关于{topic}，我先处理，确认结果后再回复你。',
-               f'我先核对{topic}的相关内容，再向你说明进展。',
-               f'我会按你的要求处理{topic}，再回复你确认的结果。')
+        topic=focus if 1<=len(focus)<=8 and not re.search(r'我|你|请|什么|怎么|如何|哪些|[？?]',focus) else '这件事'
+        lines=(f'我来处理{topic}。',f'我先看看{topic}。',f'我看一下{topic}怎么处理。')
     return lines[variant]
 
 

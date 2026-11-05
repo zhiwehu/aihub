@@ -58,3 +58,47 @@ class RouterContextTests(unittest.IsolatedAsyncioTestCase):
             pass
         router = [h for prompt, h in seen if '工具路由器' in prompt]
         self.assertEqual([m['content'] for m in router[0]], ['今天天气怎么样', '那明天呢'])
+
+    async def test_basic_news_skips_unavailable_rex_and_uses_configured_source(self):
+        from unittest.mock import AsyncMock
+        from aihub_tools.rex_planner import PlannerError
+        from aihub_tools.tools import ToolStatus
+        import contextlib
+        seen=[];pipeline=self.pipeline(seen)
+        pipeline.config['tools']['planner']='rex'
+        pipeline.config['tools']['news_source']='chinanews'
+        pipeline.runtime.planner=SimpleNamespace(plan=AsyncMock(side_effect=PlannerError('planner_unavailable')))
+        started=None
+        async with contextlib.aclosing(chat(pipeline,[{'role':'user','content':'最近有什么新闻'}])) as source:
+            async for item in source:
+                if isinstance(item,ToolStatus) and item.phase=='started':started=item;break
+        self.assertIsNotNone(started)
+        self.assertEqual(started.name,'news');self.assertEqual(started.arguments,{'source':'chinanews','limit':3})
+        self.assertEqual(started.planner,'news_rules');pipeline.runtime.planner.plan.assert_not_awaited()
+        self.assertEqual(seen,[])
+
+    async def test_unavailable_rex_falls_back_to_bounded_llm_for_specific_news(self):
+        from unittest.mock import AsyncMock
+        from aihub_tools.rex_planner import PlannerError
+        from aihub_tools.tools import ToolStatus
+        import contextlib
+        seen=[];pipeline=self.pipeline(seen,'{"tool":"news","arguments":{"keyword":"科技"}}')
+        pipeline.config['tools']['planner']='rex'
+        pipeline.runtime.planner=SimpleNamespace(plan=AsyncMock(side_effect=PlannerError('planner_unavailable')))
+        started=None
+        async with contextlib.aclosing(chat(pipeline,[{'role':'user','content':'帮我查一下科技方面的新闻'}])) as source:
+            async for item in source:
+                if isinstance(item,ToolStatus) and item.phase=='started':started=item;break
+        self.assertIsNotNone(started);self.assertEqual(started.arguments['keyword'],'科技')
+        self.assertEqual(started.planner,'llm_fallback')
+        self.assertEqual(len([p for p,h in seen if '工具路由器' in p]),1)
+
+    async def test_both_planners_failing_is_reported_as_a_failure_not_completed_work(self):
+        from unittest.mock import AsyncMock
+        from aihub_tools.rex_planner import PlannerError
+        from aihub_tools.tools import ToolStatus
+        pipeline=self.pipeline([],router_payload='not-json');pipeline.config['tools']['planner']='rex'
+        pipeline.runtime.planner=SimpleNamespace(plan=AsyncMock(side_effect=PlannerError('planner_unavailable')))
+        values=[v async for v in chat(pipeline,[{'role':'user','content':'帮我查一下科技方面的新闻'}])]
+        self.assertTrue(any(isinstance(v,ToolStatus) and v.phase=='failed' and v.code=='planning_failed' for v in values))
+        self.assertFalse(any(isinstance(v,ToolStatus) and v.phase=='started' for v in values))
