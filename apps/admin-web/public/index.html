@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f3ed" />
+    <title>声桥 VoiceHub · 实时语音工作台</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css?v=20261031c" />
+    <script src="/static/app.js?v=20261101a" type="module"></script>
+    <script src="/static/client-access.js" type="module"></script>
+    <script src="/static/connections.js?v=20261101b" type="module"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <a class="brand" href="#overview" aria-label="声桥首页"
+          ><span class="brand-mark">声</span
+          ><span>声桥<small>VOICEHUB / LOCAL</small></span></a
+        >
+        <div class="rail-label">工作空间</div>
+        <nav aria-label="主导航">
+          <button data-view="overview" class="active">
+            <span>◉</span>运行总览
+          </button>
+          <button data-view="conversations">
+            <span>▤</span>对话记录 <b id="session-count">0</b>
+          </button>
+          <button data-view="connections"><span>⌁</span>客户端接入</button>
+          <button data-view="models"><span>≋</span>模型与语音</button>
+          <button data-view="mcp"><span>◇</span>MCP 工具</button>
+          <button data-view="logs"><span>⌘</span>事件日志</button>
+          <button data-view="recordings"><span>●</span>录音</button>
+        </nav>
+        <div class="rail-bottom">
+          <span class="dot" id="server-dot"></span
+          ><span id="connection-label">正在连接后端</span
+          ><small>独立会话 · 本地存储<br />v0.1 / 开发预览</small>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <span class="eyebrow">YOUR VOICE, CONNECTED.</span>
+            <h1 id="page-title">运行总览</h1>
+          </div>
+          <div class="top-status">
+            <span class="dot"></span>本地工作台 <span id="clock"></span>
+          </div>
+        </header>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <section id="login" class="panel" hidden>
+          <h2>连接工作台</h2>
+          <p>远程管理需要管理员令牌。令牌保存在服务器的数据目录。</p>
+          <form id="login-form">
+            <label
+              >管理员令牌<input
+                id="admin-token"
+                type="password"
+                autocomplete="off"
+                required /></label
+            ><button class="primary">登录</button>
+          </form>
+        </section>
+        <section data-panel="overview">
+          <div class="hero">
+            <div>
+              <span class="eyebrow">A PLACE FOR EVERY CONVERSATION</span>
+              <h2>让每一种设备，<br />都能自然对话。</h2>
+              <p>
+                统一接入声音、模型与会话。<br />从这里，连接你的下一个语音终端。
+              </p>
+
+            </div>
+            <div class="signal-art" aria-hidden="true">
+              <div class="orbit one"></div>
+              <div class="orbit two"></div>
+              <div class="orbit three"></div>
+              <div class="signal-core">
+                <span></span><span></span><span></span><span></span
+                ><span></span>
+              </div>
+              <span class="art-label">LISTEN · THINK · SPEAK</span>
+            </div>
+          </div>
+          <div class="metrics">
+            <article>
+              <span>在线客户端</span><strong id="online-count">0</strong
+              ><small>最多 8 个独立会话</small>
+            </article>
+            <article>
+              <span>最近会话</span><strong id="recent-count">0</strong
+              ><small>当前列表中的持久记录</small>
+            </article>
+            <article>
+              <span>人声检测</span><strong id="vad-status">—</strong
+              ><small>Silero ONNX · CPU</small>
+            </article>
+            <article>
+              <span>对话引擎</span><strong id="engine-status">—</strong
+              ><small id="engine-model">正在读取配置</small>
+            </article>
+          </div>
+          <div class="metrics system-metrics">
+            <article>
+              <span>部署方式</span><strong id="deploy-mode">—</strong
+              ><small id="deploy-detail">正在读取运行环境</small>
+            </article>
+            <article>
+              <span>服务 CPU</span><strong id="cpu-usage">—</strong
+              ><small id="cpu-detail">—</small>
+            </article>
+            <article>
+              <span>服务内存</span><strong id="mem-usage">—</strong
+              ><small id="mem-detail">—</small
+              ><small id="mem-breakdown">—</small>
+            </article>
+            <article>
+              <span>磁盘</span><strong id="disk-usage">—</strong
+              ><small id="disk-detail">—</small
+              ><small id="disk-extra">—</small>
+            </article>
+            <article>
+              <span>网络</span><strong id="net-usage">—</strong
+              ><small id="net-detail">—</small>
+            </article>
+          </div>
+          <div class="overview-bottom">
+            <article class="panel">
+              <div class="section-heading">
+                <h2>连接中的设备</h2>
+                <span class="tag">LIVE</span>
+              </div>
+              <div id="devices"></div>
+            </article>
+            <article class="panel">
+              <div class="section-heading">
+                <h2>最近活动</h2>
+                <button class="text-button" id="go-logs">查看日志 ↗</button>
+              </div>
+              <div id="activity"></div>
+            </article>
+          </div>
+          <p class="footnote">
+            自然插话依赖客户端持续收音与回声消除。能力声明不等于真实外放验证。
+          </p>
+        </section>
+        <section data-panel="conversations" hidden>
+          <div class="section-intro">
+            <p>每段对话独立保存。生成、播放确认与中断都有迹可循。</p>
+          </div>
+          <div class="conversation-layout">
+            <aside class="panel session-list">
+              <h2>最近会话</h2>
+              <label>来源<select id="session-source"><option value="">全部来源</option><option value="web">网页客户端</option><option value="device">设备</option><option value="unknown">历史记录 / 来源未知</option></select></label>
+              <label>设备 / 客户端 ID<input id="session-device" placeholder="精确 ID"></label>
+              <div id="sessions" role="region" aria-label="最近会话列表" tabindex="0"></div>
+              <button class="secondary" id="more-sessions">更早会话</button>
+            </aside>
+            <article class="panel transcript">
+              <div class="section-heading">
+                <h2 id="conversation-title">选择一段会话</h2>
+                <button id="interrupt-session" class="secondary" disabled>
+                  停止当前回复
+                </button>
+              </div>
+              <button id="more-messages" class="text-button" hidden>
+                加载更早消息
+              </button>
+              <div id="messages" role="region" aria-label="对话消息" tabindex="0">
+                <div class="empty">
+                  <span>▤</span>
+                  <h3>对话会在这里留下记录</h3>
+                  <p>连接一个设备，或到网页聊天开始第一段对话。</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section data-panel="connections" hidden>
+          <article class="panel">
+            <h2>独立网页客户端</h2>
+            <p>默认入口为本机 <a href="http://127.0.0.1:8768/demo/" target="_blank" rel="noopener noreferrer">客户端页面</a>。客户端只使用自己的凭证；远程部署请使用配置的 HTTPS 客户端地址。</p>
+            <form id="client-access-form"><label>客户端名称<input id="client-access-name" required maxlength="80" autocomplete="off"></label><button class="primary">创建客户端凭证</button></form>
+            <p id="client-access-result" role="status"></p>
+            <label id="client-access-secret" hidden>客户端凭证（仅显示一次）<input id="client-access-token" readonly type="text" autocomplete="off"></label>
+            <button id="client-access-refresh" type="button">刷新凭证列表</button><div id="client-access-list"></div>
+          </article>
+          <article class="panel">
+            <h2>设备专用凭证</h2>
+            <p>新 USB 配网会自动绑定检查到的设备 MAC。手动接入可在这里创建凭证；旧设备的共享令牌继续兼容。</p>
+            <form id="device-access-form"><label>设备 ID / MAC<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="primary">创建设备凭证</button></form>
+            <p id="device-access-result" role="status"></p>
+            <label id="device-access-secret" hidden>设备凭证（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
+            <label id="device-access-ota-wrap" hidden>OTA 地址<input id="device-access-ota" readonly autocomplete="off"></label>
+            <button id="device-access-refresh" type="button">刷新设备凭证</button><div id="device-access-list"></div>
+          </article>
+          <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
+          <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
+          <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>
+          <article class="panel onboarding-guide"><div class="section-heading"><h2 id="client-guide-title">接入向导</h2><span id="client-guide-status" class="tag"></span></div><p id="client-guide-hardware" class="hint"></p><ol id="client-guide-steps"></ol><p id="client-install-note" class="hint"></p><div id="client-install-actions" class="button-row"></div></article>
+          <article id="echoear-installer" class="panel onboarding-guide" hidden>
+            <h2>连接喵伴</h2>
+            <ol class="usb-steps" aria-label="连接步骤"><li data-usb-step="1" aria-current="step"><b>1</b><span>连接设备</span></li><li data-usb-step="2"><b>2</b><span>配网</span></li><li data-usb-step="3"><b>3</b><span>开始对话</span></li></ol>
+            <div data-usb-panel="1"><p class="hint">用 USB 数据线把喵伴连到这台电脑，然后点下面的按钮。第一次需要在弹窗里选一次喵伴，之后会自动记住。</p>
+            <div class="button-row"><button type="button" class="secondary" id="echoear-connect">开始连接</button><span id="echoear-device-info" class="hint"></span></div></div>
+            <div data-usb-panel="2" hidden><div id="echoear-network-intro"><p id="echoear-network-lead">喵伴已连接。下一步，把它连接到电脑所在的 Wi-Fi。</p>
+              <div class="button-row"><button type="button" class="primary" id="echoear-open-network">开始配网</button><button type="button" class="text-button" id="echoear-other-wifi" hidden>换一个 Wi-Fi</button></div></div><form id="echoear-network-form" hidden>
+              <label>配网方式<select id="echoear-wifi-mode"><option value="new">使用电脑当前 Wi-Fi（可修改）</option><option value="keep">沿用喵伴已保存的 Wi-Fi</option></select></label>
+              <p id="echoear-wifi-hint" class="hint">无需填写密码。电脑需与喵伴处于可互通的网络；不会读取电脑保存的 Wi-Fi 密码。</p>
+              <div id="echoear-wifi-fields" hidden>
+              <label>Wi-Fi 名称<input id="echoear-wifi-ssid" autocomplete="off" maxlength="32" required placeholder="填写 2.4 GHz Wi-Fi 名称" /></label>
+              <label>Wi-Fi 密码<input id="echoear-wifi-password" type="password" autocomplete="new-password" maxlength="64" placeholder="填写该 Wi-Fi 的密码" /></label>
+              <label class="check"><input id="echoear-wifi-open" type="checkbox" />这是无需密码的开放网络</label></div>
+              <label id="echoear-network-choice" hidden>电脑连接的网络<select id="echoear-network-host"><option value="">自动选择</option></select></label>
+              <button id="echoear-setup" class="primary" type="submit" disabled>开始配置</button>
+            </form></div>
+            <p class="hint">配网只改动喵伴的设置，通常十几秒完成；勾选“同时更新固件”才会先做可恢复的原机备份。</p>
+            <progress id="echoear-install-progress" max="100" value="0" aria-label="接入进度" hidden></progress><p id="echoear-install-status" role="status">先点击“连接 USB”。</p>
+            <div data-usb-panel="3" hidden><h3>等待喵伴联网</h3><p>联网成功后，使用设备当前的唤醒词开始对话。</p><p id="echoear-verify-status" role="status"></p><button type="button" class="primary" id="echoear-heard" disabled hidden>听到回复，完成连接</button></div><button type="button" class="text-button" id="echoear-disconnect" disabled hidden>断开 USB</button>
+            <details class="echoear-advanced"><summary>高级选项</summary><details><summary>查看详细信息</summary><pre id="echoear-technical-details"></pre></details>
+              <p id="echoear-serial-note" class="hint"></p><p id="echoear-release-status" class="hint" role="status">正在读取升级版本…</p>
+              <label class="check"><input id="echoear-update-with-setup" type="checkbox" disabled />连接时同时更新固件</label><p id="echoear-update-note" class="hint"></p>
+              <div class="button-row"><button type="button" class="secondary" id="echoear-backup" disabled>立即备份</button><button type="button" class="secondary" id="echoear-upgrade" disabled>单独安装升级</button></div>
+              <h3>恢复设备</h3><p class="hint">自动使用这台喵伴最近且校验通过的备份。整机备份会恢复原应用和设置；只做过配网备份的设备，只恢复连接设置。</p><button type="button" class="secondary" id="echoear-restore" disabled>恢复最近可用备份</button>
+              <h3>其他配网方式</h3><button type="button" class="secondary" id="echoear-copy-setup">复制 VoiceHub 连接入口</button><p id="echoear-setup-status" class="hint" role="status">供设备热点配网页使用。</p>
+            </details>
+          </article>
+          <details id="connection-advanced" class="onboarding-guide"><summary>高级连接设置 <small>供管理员使用，普通使用无需修改</small></summary><p class="hint">用于配置设备接入服务。网页客户端无需修改这些设置。</p>
+          <div class="connection-grid">
+            <article class="panel"><div class="section-heading"><h2>WebSocket 设备监听</h2><span class="tag" id="ws-device-state">读取中</span></div><p id="ws-console-address" class="hint"></p><p id="ws-device-address" class="hint"></p>
+              <form id="ws-connection-form"><label for="ws-device-host">设备监听 IPv4</label><input id="ws-device-host" required placeholder="选择当前电脑的局域网地址" list="local-addresses"/><label for="ws-device-port">设备监听端口</label><input id="ws-device-port" type="number" min="1" max="65535" required value="8766"/><button class="secondary" type="submit">保存 WebSocket 配置</button></form>
+              <p class="hint">此监听仅提供设备接入，不开放管理台。设备仍需访问令牌。停止或重启会断开该监听上的设备。</p><div class="button-row" id="ws-connection-actions"><button class="secondary" type="button" data-action="start">启动</button><button class="secondary" type="button" data-action="stop">停止</button><button class="secondary" type="button" data-action="restart">重启</button></div>
+            </article>
+            <article class="panel"><div class="section-heading"><h2>MQTT + UDP 网关</h2><span class="tag" id="mqtt-connection-state">读取中</span></div><p id="mqtt-connection-warning" class="hint"></p>
+              <form id="mqtt-connection-form"><label for="mqtt-broker-host">Broker IPv4</label><input id="mqtt-broker-host" required list="local-addresses"/><label for="mqtt-broker-port">Broker 端口</label><input id="mqtt-broker-port" type="number" min="1" max="65535" required/><label for="mqtt-udp-host">UDP 监听 / 通告 IPv4</label><input id="mqtt-udp-host" required list="local-addresses"/><label for="mqtt-udp-port">UDP 音频端口</label><input id="mqtt-udp-port" type="number" min="0" max="65535" required/><fieldset><legend>允许接入的已配置设备</legend><div id="mqtt-configured-devices"></div></fieldset><button class="secondary" type="submit">保存 MQTT 配置</button></form>
+              <p class="hint"><a href="https://github.com/zhiwehu/miaoban/blob/feature/aihub-control-center/docs/MQTT_UDP.md" target="_blank" rel="noopener noreferrer">Broker 与设备初始化说明</a></p><p class="hint">先停止网关再修改配置。网关连接已有 Broker，不负责安装或启停 Broker。密码、ACL 和配网令牌沿用私有配置。</p><div class="button-row" id="mqtt-connection-actions"><button class="secondary" type="button" data-action="start">启动</button><button class="secondary" type="button" data-action="stop">停止</button><button class="secondary" type="button" data-action="restart">重启</button></div>
+            </article>
+          </div><datalist id="local-addresses"></datalist><p id="local-address-hint" class="hint"></p></details>
+          <article class="panel onboarding-guide"><div class="section-heading"><h2>已连接设备</h2><span id="connections-online-count" class="tag">0 在线</span></div><div id="connections-devices"></div></article>
+        </section>
+        <section data-panel="models" hidden>
+          <div class="section-intro">
+            <p>
+              分别选择识别、对话和语音服务。选择“内置服务”并保存后，可独立启动、停止和重启。停止或重启会中断该服务正在处理的请求。
+            </p>
+            <span class="tag">保存后对新连接生效</span>
+          </div>
+          <form id="settings-form">
+            <div class="provider-grid" id="provider-fields"></div>
+            <div class="settings-grid">
+              <article class="panel">
+                <h2>会话与唤醒</h2>
+                <label
+                  >默认唤醒方式<select id="wake-mode">
+                    <option value="device">设备端唤醒</option>
+                    <option value="backend">后端唤醒（持续上传）</option>
+                    <option value="manual">按键 / 手动激活</option>
+                  </select></label
+                ><label
+                  >后端唤醒词<input
+                    id="wake-phrase"
+                    maxlength="50"
+                    required /></label
+                ><label
+                  >空闲后待机（秒）<input
+                    id="idle-seconds"
+                    type="number"
+                    min="5"
+                    max="600"
+                    required
+                /></label>
+                <p class="hint">
+                  设备端唤醒词需在设备上配置。后端模式先对语音片段转写，再检测唤醒词；不是专用关键词引擎。
+                </p>
+                <label class="check"
+                  ><input
+                    id="barge-in"
+                    type="checkbox"
+                  />允许自然插话（需要客户端 AEC）</label
+                >
+              </article>
+              <article class="panel">
+                <h2>人声检测与记录</h2>
+                <label
+                  >Silero VAD v6 ONNX 路径<input
+                    id="vad-model"
+                    placeholder="留空自动查找本机已缓存模型"
+                /></label>
+                <div class="field-pair">
+                  <label
+                    >起声确认（毫秒）<input
+                      id="onset-ms"
+                      type="number"
+                      min="96"
+                      max="1000"
+                      required /></label
+                  ><label
+                    >句末静音（毫秒）<input
+                      id="silence-ms"
+                      type="number"
+                      min="320"
+                      max="2000"
+                      required
+                  /></label>
+                </div>
+                <label
+                  >人声概率阈值<input
+                    id="speech-threshold"
+                    type="number"
+                    min="0.3"
+                    max="0.95"
+                    step="0.01"
+                    required /></label
+                ><label
+                  >记录保留（天）<input
+                    id="retention-days"
+                    type="number"
+                    min="1"
+                    max="365"
+                    required
+                /></label>
+              </article>
+            </div>
+            <article class="panel prompt-panel">
+              <h2>对话提示词</h2>
+              <label
+                >定义语气、角色和回复方式<textarea
+                  id="system-prompt"
+                  rows="4"
+                  maxlength="8000"
+                ></textarea>
+              </label>
+            </article>
+            <div class="save-bar">
+              <p>
+                API
+                密钥填写环境变量名称。实际密钥在启动服务前设置，工作台不会读取或展示。
+              </p>
+              <button class="primary" type="submit">保存配置</button>
+            </div>
+          </form>
+        </section>
+        <section data-panel="mcp" hidden>
+          <div class="section-intro">
+            <div><p>让对话连接实时信息与本机能力。</p><p class="hint" id="mcp-summary">正在读取工具列表…</p></div>
+            <div class="button-row"><button class="secondary" id="mcp-refresh">刷新列表</button><button class="secondary" id="mcp-settings">决策设置</button></div>
+          </div>
+          <article id="mcp-common-settings" class="panel"></article>
+          <p id="mcp-planner" class="hint mcp-catalogue-note">正在读取决策方式…</p>
+          <p id="mcp-load-status" role="status"></p>
+          <div id="mcp-tool-list" class="mcp-tool-grid"></div>
+          <div id="mcp-tool-settings-storage" hidden>
+          <article class="panel mcp-extension">
+            <h2>本地音乐目录</h2>
+            <p class="hint">声音从后端电脑的默认音频设备播放。支持 MP3、WAV、M4A、AAC、AIFF、FLAC；首次使用请设置目录并启用。</p>
+            <form id="music-settings-form">
+              <label>音乐目录（后端电脑上的绝对路径）<input id="music-directory" maxlength="2048" placeholder="例如：/Users/你的用户名/Music" /></label>
+              <label class="check"><input type="checkbox" id="music-enabled" />启用本地音乐</label>
+              <div class="button-row"><button class="primary" type="submit">保存音乐设置</button><button class="secondary" type="button" id="music-scan">扫描音乐目录</button></div>
+            </form>
+            <p id="music-status" role="status" class="hint"></p><div id="music-library"></div>
+          </article>
+          <article class="panel mcp-extension">
+            <h2>指定目录文件整理</h2>
+            <p class="hint">只整理所选目录第一层的普通文件，按类型归入分类文件夹。子目录、隐藏文件和链接会跳过；不读取文件内容，不删除或覆盖文件。先预览再确认，支持撤销最近一次整理。</p>
+            <form id="file-settings-form">
+              <label>允许整理的目录（后端电脑绝对路径）<input id="file-directory" maxlength="2048" placeholder="例如：/Users/你的用户名/Downloads/待整理" /></label>
+              <label class="check"><input type="checkbox" id="file-enabled" />启用指定目录文件整理</label>
+              <div class="button-row"><button class="primary" type="submit">保存整理设置</button><button class="secondary" type="button" id="file-preview">生成整理预览</button><button class="secondary" type="button" id="file-refresh">刷新整理计划</button></div>
+            </form>
+            <p class="hint">试着说：“整理一下指定目录里的文件”。语音只生成方案，请在这里核对完整清单并确认执行。最多扫描 2000 项、整理 1000 个文件；操作过程中请勿更改目录或文件。</p>
+            <p id="file-status" class="hint" role="status"></p><div id="file-plans"></div>
+          </article>
+          </div>
+          <details class="panel mcp-extension mcp-add-services">
+            <summary>添加与管理 MCP</summary>
+          <article class="panel mcp-extension">
+            <h2>连接远程 MCP</h2>
+            <p class="hint">填写 Streamable HTTP 服务的完整端点，例如 https://example.com/mcp。保存时不会连接；启用后才验证工具。暂不支持旧版 HTTP+SSE 和 OAuth 登录。</p>
+            <form id="mcp-remote-form">
+              <label>服务 ID<input id="mcp-remote-id" required maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{0,31}" placeholder="例如：my-remote" /></label>
+              <label>显示名称<input id="mcp-remote-name" maxlength="80" placeholder="例如：我的远程工具" /></label>
+              <label>MCP 服务地址<input id="mcp-remote-url" type="url" required maxlength="2048" placeholder="https://example.com/mcp" /></label>
+              <label>Bearer Token（可选）<input id="mcp-remote-token" type="password" autocomplete="off" maxlength="4000" placeholder="仅填写 Token，不含 Bearer 前缀" /></label>
+              <details class="mcp-schema"><summary>协议版本与自定义认证</summary>
+                <label>协议版本<select id="mcp-remote-version"><option value="2025-11-25">2025-11-25（会话模式，兼容 2025 服务）</option><option value="2026-07-28">2026-07-28（无会话模式）</option><option value="2025-06-18">2025-06-18</option><option value="2025-03-26">2025-03-26</option></select></label>
+                <label>自定义认证请求头 JSON<textarea id="mcp-remote-headers" rows="3" placeholder='{"X-API-Key":"你的密钥"}' autocomplete="off" spellcheck="false"></textarea></label>
+                <p class="hint">认证信息仅保存于后端，不会回填到页面或提供给模型。暂不支持修改已保存凭据；需要更换时删除后重新添加。</p>
+              </details>
+              <label class="check"><input type="checkbox" id="mcp-remote-private" />允许此服务访问本地或局域网地址（HTTP 会明文传输）</label>
+              <div class="button-row"><button class="primary" type="submit">保存远程服务</button></div>
+            </form>
+            <p id="mcp-remote-status" role="status" class="hint"></p>
+          </article>
+          <article class="panel mcp-extension">
+            <h2>上传自己的 MCP</h2>
+            <p>上传 JSON 服务配置（stdio 填 command，HTTP 填 type 和 url），或根目录含 mcp.json 和 Python 服务的 ZIP 包。上传后处于停用状态，启用时才会运行并验证。</p>
+            <p class="hint">本地代码启用后以当前系统用户权限运行，并非安全沙箱。远程服务会收到调用参数。仅启用你信任的服务；不会自动安装依赖。ZIP 最大 2 MB、50 个文件，每个服务最多 20 个工具。</p>
+            <a class="connection-link" href="/api/mcp/example" download="local-echo-mcp.zip">下载可上传的回显示例</a>
+            <form id="mcp-upload-form"><label>MCP 配置或插件包<input type="file" id="mcp-upload-file" accept=".json,.zip" required /></label><div class="button-row"><button class="primary" type="submit">上传并检查文件</button></div></form>
+            <p id="mcp-upload-status" role="status" class="hint"></p>
+            <h3>外部 MCP 服务</h3><div id="mcp-external-servers"></div>
+            <p class="hint">现有 Rex 仍只识别原三类查询。新增外部工具通过动态目录交给对话模型规划，不会因上传而自动训练 Rex。</p>
+          </article>
+          </details>
+        </section>
+        <section data-panel="logs" hidden>
+          <div class="section-intro">
+            <p>按会话追踪连接、状态、错误和轮次耗时。音频内容不会写入日志。</p>
+            <div>
+              <label class="sr-only" for="log-filter">筛选日志</label
+              ><select id="log-filter">
+                <option value="all">全部事件</option>
+                <option value="error">仅错误</option>
+                <option value="turn">轮次与播放</option>
+                <option value="session">连接与状态</option></select
+              ><button class="secondary" id="refresh-logs">刷新</button>
+            </div>
+          </div>
+          <p class="hint" id="log-session-scope" hidden></p><button class="secondary" id="clear-log-session" hidden>查看全部会话日志</button>
+          <article class="panel log-panel">
+            <div class="log-header">
+              <span>时间</span><span>事件</span><span>会话 / 详情</span>
+            </div>
+            <div id="logs"></div>
+            <button id="more-logs" class="text-button">加载更早日志</button>
+          </article>
+        </section>
+        <section data-panel="recordings" hidden>
+          <div class="section-intro">
+            <p>选择左侧录音，右侧查看文字、播放音频并导出；录音从网页客户端或喵伴开始。</p>
+            <span class="tag">录音工作台</span>
+          </div>
+          <div class="recording-workspace">
+            <aside class="panel recording-history">
+              <div class="section-heading">
+                <h2>录音历史</h2>
+                <span class="tag" id="recordings-count">0 个</span>
+              </div>
+              <label>来源<select id="recording-source"><option value="">全部来源</option><option value="web">网页客户端</option><option value="device">设备</option><option value="unknown">历史记录 / 来源未知</option></select></label>
+              <label>设备 / 客户端 ID<input id="recording-device" placeholder="精确 ID"></label>
+              <label>状态<select id="recording-status"><option value="">全部状态</option><option value="active">录音中</option><option value="stopped">已结束</option></select></label>
+              <label>开始时间不早于<input id="recording-after" type="datetime-local"></label>
+              <button id="recordings-refresh" class="text-button recording-refresh" type="button">
+                刷新列表
+              </button>
+              <div id="recordings-list" class="recording-history-list">
+                <div class="empty">
+                  <span>◎</span>
+                  <h3>还没有录音</h3>
+                  <p>在网页客户端或喵伴说“开始录音模式”。</p>
+                </div>
+              </div>
+            </aside>
+            <article class="panel recording-detail">
+              <div id="recording-empty" class="recording-detail-empty">
+                <div class="empty">
+                  <span>◎</span>
+                  <h3>选择一条录音</h3>
+                  <p>左侧历史记录可以查看文字、播放音频和导出。</p>
+                </div>
+              </div>
+              <div id="recording-detail" hidden>
+                <header class="recording-detail-head">
+                  <div class="recording-detail-heading">
+                    <p class="eyebrow" id="recording-detail-date">—</p>
+                    <h2 id="recording-detail-title">录音详情</h2>
+                    <p class="hint" id="recording-detail-meta">—</p>
+                  </div>
+                  <span class="tag" id="recording-detail-state">已保存</span>
+                </header>
+                <div id="recording-player" class="recording-player" hidden>
+                  <button id="recording-play" class="player-play" type="button" aria-label="播放">
+                    ▶
+                  </button>
+                  <div class="player-track">
+                    <input
+                      id="recording-seek"
+                      type="range"
+                      min="0"
+                      max="0"
+                      value="0"
+                      step="0.01"
+                      aria-label="播放进度"
+                    />
+                    <div class="player-times">
+                      <span id="recording-current">00:00</span>
+                      <span id="recording-total">00:00</span>
+                    </div>
+                  </div>
+                  <audio id="recording-audio" preload="metadata"></audio>
+                </div>
+                <div id="recording-player-placeholder" class="recording-player-placeholder" hidden>
+                  录音仍在进行，停止后可以播放、下载和跳转文字。
+                </div>
+                <div class="recording-detail-actions">
+                  <button id="recording-stop" class="danger" type="button" hidden>
+                    停止并保存
+                  </button>
+                  <button id="recording-export" class="secondary" type="button" disabled>
+                    导出文字
+                  </button>
+                  <a id="recording-ready-download" class="secondary recording-download" hidden>
+                    下载精简音频
+                  </a>
+                  <a id="recording-download" class="secondary recording-download" hidden>
+                    下载原始音频
+                  </a>
+                  <button id="recording-minutes-button" class="secondary" type="button" disabled>
+                    生成会议纪要
+                  </button>
+                </div>
+                <p class="hint recording-action-hint" id="recording-action-hint">
+                  完整音频保留全部静音；精简音频只保留检测到人声的片段；降噪音频使用同一时间轴，
+                  修复部分设备的削波和高频毛刺。会议纪要使用本地模型生成。
+                </p>
+                <section class="recording-transcript-panel">
+                  <div class="section-heading">
+                    <h2>转写文字</h2>
+                    <span class="tag" id="transcript-status">—</span>
+                  </div>
+                  <div id="transcript-lines" class="transcript-lines" aria-live="polite">
+                    <div class="empty">
+                      <span>◎</span>
+                      <h3>还没有文字</h3>
+                      <p>录音停顿后会实时出现一行文字。</p>
+                    </div>
+                  </div>
+                  <p class="hint" id="transcript-hint">
+                    点击一行跳到对应录音位置；拖动播放进度条时，当前段落会同步高亮。
+                    时间戳是录音内时间。
+                  </p>
+                </section>
+                <section id="minutes-panel" class="minutes-panel" hidden>
+                  <div class="section-heading">
+                    <h2>会议纪要</h2>
+                    <span class="tag" id="minutes-model-tag">本机离线生成</span>
+                  </div>
+                  <div class="minutes-toolbar">
+                    <label class="minutes-field">模板
+                      <select id="minutes-template"></select>
+                    </label>
+                    <button id="minutes-generate" class="primary" type="button">
+                      生成纪要
+                    </button>
+                    <button id="minutes-cancel" class="secondary" type="button" hidden>
+                      取消生成
+                    </button>
+                    <button id="minutes-refresh" class="secondary" type="button">
+                      刷新
+                    </button>
+                  </div>
+                  <details class="minutes-custom">
+                    <summary>新建自定义模板</summary>
+                    <div class="minutes-custom-body">
+                      <input id="minutes-template-name" maxlength="40"
+                             placeholder="模板名称（最多 40 字）" />
+                      <textarea id="minutes-template-instructions" maxlength="1000"
+                                placeholder="这个模板最关注什么？例如：只提取技术风险、决策和负责人。"></textarea>
+                      <div class="minutes-sections" id="minutes-template-sections">
+                        <label><input type="checkbox" value="overview" checked> 概览</label>
+                        <label><input type="checkbox" value="topics" checked> 议题</label>
+                        <label><input type="checkbox" value="decisions" checked> 决策</label>
+                        <label><input type="checkbox" value="proposals" checked> 提议/未决</label>
+                        <label><input type="checkbox" value="action_items" checked> 行动项</label>
+                        <label><input type="checkbox" value="risks" checked> 风险</label>
+                      </div>
+                      <button id="minutes-template-create" class="secondary" type="button">
+                        保存为我的模板
+                      </button>
+                    </div>
+                  </details>
+                  <div id="minutes-status" class="minutes-status" hidden>
+                    <div class="minutes-progress"><span id="minutes-progress-bar"></span></div>
+                    <p id="minutes-status-text"></p>
+                  </div>
+                  <div id="minutes-error" class="minutes-error" hidden></div>
+                  <div id="minutes-result" class="minutes-result" hidden></div>
+                  <div id="minutes-editor-wrap" class="minutes-editor-wrap" hidden>
+                    <textarea id="minutes-editor" spellcheck="false"
+                              aria-label="编辑会议纪要"></textarea>
+                    <div class="minutes-toolbar">
+                      <button id="minutes-save-edit" class="primary" type="button">保存编辑</button>
+                      <button id="minutes-cancel-edit" class="secondary" type="button">取消</button>
+                    </div>
+                  </div>
+                  <div id="minutes-actions" class="minutes-toolbar" hidden>
+                    <button id="minutes-edit-button" class="secondary" type="button">编辑</button>
+                    <a id="minutes-export-md" class="secondary recording-download">导出 Markdown</a>
+                    <a id="minutes-export-txt" class="secondary recording-download">导出 TXT</a>
+                  </div>
+                  <div class="minutes-history-block">
+                    <div class="section-heading">
+                      <h3>历史纪要</h3>
+                      <span class="hint">同一录音可以换模板重新生成</span>
+                    </div>
+                    <div id="minutes-history" class="minutes-history"></div>
+                  </div>
+                </section>
+              </div>
+            </article>
+          </div>
+        </section>
+        <footer>
+          <span>声桥 / VOICEHUB</span><span>一个后端，多种声音入口。</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

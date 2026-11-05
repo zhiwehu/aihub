@@ -1,0 +1,12 @@
+# Dependencies and build output (there is no build today; these are guards)
+node_modules/
+dist/
+
+# Editor and OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# Local overrides
+.env
+.env.*
