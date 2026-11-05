@@ -188,3 +188,15 @@ class WebClientTests(IsolatedAsyncioTestCase):
                     self.assertEqual((await client.get('/demo/assets/client.js',headers={**headers,'Host':'untrusted.example'})).status,403)
             finally:
                 await client.close()
+
+    async def test_admin_client_entry_uses_public_listener_address_without_secrets(self):
+        from unittest import mock
+        self.hub.client_port=8768
+        with mock.patch.dict('os.environ', {'AIHUB_CLIENT_PUBLIC_PORT':'19768'}):
+            response=await self.admin.get('/api/client-credentials')
+            data=await response.json()
+            self.assertEqual(data['client_url'],'http://127.0.0.1:19768/demo/')
+            self.assertNotIn(self.first['token'],str(data))
+        with mock.patch.dict('os.environ', {'AIHUB_CLIENT_PUBLIC_URL':'https://chat.example/app/'}):
+            data=await (await self.admin.get('/api/client-credentials')).json()
+            self.assertEqual(data['client_url'],'https://chat.example/app/')

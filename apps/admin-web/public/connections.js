@@ -68,7 +68,7 @@ function drawGuide() {
   for(const text of client.steps)steps.append(el('li',text));
   $('client-install-note').textContent=client.installation;
   const actions=$('client-install-actions');actions.replaceChildren();
-  if(client.id==='web') {const start=link('打开独立网页客户端','http://127.0.0.1:8768/demo/');start.classList.add('primary');actions.append(start);}
+  if(client.id==='web') {const start=el('button','回到上方连接步骤','secondary');start.type='button';start.onclick=()=>document.getElementById('web-access-guide').scrollIntoView({behavior:'smooth'});actions.append(start);}
   else {
     if(echoear&&flasher==='missing')actions.append(el('p','USB 连接与配网助手没有加载：服务端在 /firmware 下没找到 aihub-firmware 的 flash 目录。可以先下载连接配置手动配网，或让管理员设置 AIHUB_FIRMWARE_ROOT 后重启服务端。','hint'));
     if(client.firmware) {

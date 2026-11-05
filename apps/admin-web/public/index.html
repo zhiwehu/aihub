@@ -178,23 +178,30 @@
           </div>
         </section>
         <section data-panel="connections" hidden>
-          <article class="panel">
-            <h2>独立网页客户端</h2>
-            <p>默认入口为本机 <a href="http://127.0.0.1:8768/demo/" target="_blank" rel="noopener noreferrer">客户端页面</a>。客户端只使用自己的凭证；远程部署请使用配置的 HTTPS 客户端地址。</p>
-            <form id="client-access-form"><label>客户端名称<input id="client-access-name" required maxlength="80" autocomplete="off"></label><button class="primary">创建客户端凭证</button></form>
-            <p id="client-access-result" role="status"></p>
-            <label id="client-access-secret" hidden>客户端凭证（仅显示一次）<input id="client-access-token" readonly type="text" autocomplete="off"></label>
-            <button id="client-access-refresh" type="button">刷新凭证列表</button><div id="client-access-list"></div>
+          <article class="panel access-guide" id="web-access-guide">
+            <div class="section-heading"><h2>在网页里聊天</h2><span class="tag">首次使用，连接一次即可</span></div>
+            <p class="hint">按下面两步开始。已经连接的网页不用重复设置。</p>
+            <ol class="access-steps">
+              <li><h3>生成连接码</h3><p>连接码是这个网页的专用钥匙，用来保护你的对话和录音。</p>
+                <form id="client-access-form"><label>给网页起个名字（可不填）<input id="client-access-name" maxlength="80" autocomplete="off" placeholder="例如：我的电脑"></label><button id="client-access-create" class="primary">生成连接码</button></form>
+              </li>
+              <li><h3>复制后，打开聊天网页</h3><p>在聊天网页粘贴连接码，点击“连接”，就能开始对话或录音。</p>
+                <label id="client-access-secret" hidden>你的连接码<input id="client-access-token" readonly type="password" autocomplete="off"></label>
+                <div class="button-row"><button id="client-access-copy" class="secondary" disabled>复制连接码</button><a id="client-access-open" class="access-open" target="_blank" rel="noopener noreferrer" aria-disabled="true">打开聊天网页 ↗</a></div>
+                <p class="hint">连接码只显示这一次，请妥善保存，不要发给别人。</p>
+              </li>
+            </ol>
+            <p id="client-access-result" class="hint" role="status" aria-live="polite"></p>
+            <details class="access-manage"><summary>管理已添加的网页</summary><p class="hint">取消连接权限会断开这个网页，但不会删除已有记录。</p><button id="client-access-refresh" type="button" class="text-button">刷新列表</button><div id="client-access-list"></div></details>
           </article>
-          <article class="panel">
-            <h2>设备专用凭证</h2>
-            <p>新 USB 配网会自动绑定检查到的设备 MAC。手动接入可在这里创建凭证；旧设备的共享令牌继续兼容。</p>
-            <form id="device-access-form"><label>设备 ID / MAC<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="primary">创建设备凭证</button></form>
-            <p id="device-access-result" role="status"></p>
-            <label id="device-access-secret" hidden>设备凭证（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
-            <label id="device-access-ota-wrap" hidden>OTA 地址<input id="device-access-ota" readonly autocomplete="off"></label>
-            <button id="device-access-refresh" type="button">刷新设备凭证</button><div id="device-access-list"></div>
-          </article>
+          <details class="panel access-advanced"><summary>高级：手动连接其他设备</summary>
+            <p class="hint">通常不需要操作。连接喵伴，请使用下方的 USB 配网向导；这里仅供手动接入设备时使用。</p>
+            <form id="device-access-form"><label>设备编号（MAC 地址）<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="secondary">生成设备连接码</button></form>
+            <p id="device-access-result" class="hint" role="status"></p>
+            <label id="device-access-secret" hidden>设备连接码（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
+            <label id="device-access-ota-wrap" hidden>设备连接地址（OTA）<input id="device-access-ota" readonly autocomplete="off"></label>
+            <button id="device-access-refresh" type="button" class="text-button">刷新设备列表</button><div id="device-access-list"></div>
+          </details>
           <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
           <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
           <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>

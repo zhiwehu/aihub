@@ -844,6 +844,7 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
         # the peer address can no longer be the test.
         app[LOCAL_CONSOLE] = True
     hub = app[HUB] = Hub(root, pipeline_factory, skills_enabled=skills_enabled)
+    hub.client_port = client_port if client_host else None
     hub.connections = Connections(hub, mqtt_config, device_host, device_port, bind_host=device_bind)
     async def life(app):
         await hub.start()

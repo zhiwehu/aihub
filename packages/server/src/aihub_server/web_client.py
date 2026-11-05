@@ -5,6 +5,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aiohttp import web
 from aihub_common import env_value
@@ -22,11 +23,28 @@ def authenticate(hub, token):
     return row[0] if row else None
 
 
+def client_entry(request):
+    from .app import HUB
+    configured=env_value('CLIENT_PUBLIC_URL')
+    if configured:
+        parsed=urlsplit(configured)
+        if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError('invalid_client_public_url')
+        return configured
+    port=env_value('CLIENT_PUBLIC_PORT') or getattr(request.app[HUB],'client_port',None)
+    if port is None:return None
+    port=int(port)
+    if not 1 <= port <= 65535:raise ValueError('invalid_client_public_port')
+    host=urlsplit('//'+request.host).hostname
+    if ':' in host:host='['+host+']'
+    return f'{request.scheme}://{host}:{port}/demo/'
+
+
 async def credentials(request):
     from .app import HUB
     hub = request.app[HUB]
     if request.method == 'GET':
-        return web.json_response({'clients': [dict(row) for row in hub.store.db.execute(
+        return web.json_response({'client_url':client_entry(request),'clients': [dict(row) for row in hub.store.db.execute(
             'SELECT id,name,created FROM client_credentials ORDER BY created DESC LIMIT 100')]})
     if request.method == 'DELETE':
         identity = request.match_info['identity']

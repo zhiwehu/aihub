@@ -13,6 +13,7 @@ services:
     environment:
       AIHUB_WEB_ROOT: /app/web
       AIHUB_CLIENT_ROOT: /app/client-web
+      AIHUB_CLIENT_PUBLIC_PORT: "${AIHUB_CLIENT_PORT:-8768}"
       # Origin compatibility only; client authentication never trusts the bridge.
       # Valid only with the client port published on host loopback below.
       AIHUB_CLIENT_LOOPBACK_PROXY: "1"
