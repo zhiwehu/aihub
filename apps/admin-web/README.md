@@ -130,7 +130,7 @@ worker）。`app.js` 仍是单个大文件，没有构建工具；界面文案�
 
 ## Independent client and record sources
 
-The browser chat/recording client lives in `aihub-server/clients/web-demo/` and
+The browser chat/recording client lives in the separate `aihub-client-web` repository and
 runs at the separate client listener (default localhost:8768/demo/). This console
 never requests microphone access. Create/revoke named client credentials under
 client connections; do not put administrator tokens in client scripts.

@@ -10,7 +10,7 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 PY="$ROOT/.venv/bin/python"
 DATA="${AIHUB_DATA:-$ROOT/data}"
 SETTINGS="$DATA/settings.json"

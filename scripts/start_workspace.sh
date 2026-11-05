@@ -1,21 +1,22 @@
 #!/bin/bash
 # Start / stop the AIHub stack from a workspace directory that holds the repos:
 #
-#   aihub/{aihub-common,aihub-models,aihub-tools,aihub-server,aihub-web,aihub-firmware,.venv}
+#   aihub/{packages/{common,processing,tools,server},apps/admin-web,.venv}
 #
 # The canonical copy lives here and is versioned; the workspace-root start.sh is a
 # two-line wrapper that execs it.
 set -eu
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$ROOT/.venv"
 PY="$VENV/bin/python"
-WEB="$ROOT/aihub-web/public"
+WEB="$ROOT/apps/admin-web/public"
 DATA="${AIHUB_DATA:-$ROOT/data}"
 PORT="${AIHUB_PORT:-8765}"
 MODELS_PORT="${AIHUB_MODELS_PORT:-8790}"
 DEVICE_HOST="${AIHUB_DEVICE_HOST:-auto}"
 DEVICE_PORT="${AIHUB_DEVICE_PORT:-8766}"
+CLIENT_PORT="${AIHUB_CLIENT_PORT:-8768}"
 PIDFILE="$DATA/server.pid"
 MEDIA_PIDFILE="$DATA/media.pid"
 LOGFILE="$DATA/server.log"
@@ -151,8 +152,8 @@ fi
 # ---- preflight -----------------------------------------------------------
 [ -x "$PY" ] || fail "找不到 $VENV。先在工作区根目录执行:
   uv venv --python 3.13 .venv
-  uv pip install --python .venv/bin/python -e ./aihub-common -e ./aihub-tools -e \"./aihub-models[local]\" -e ./aihub-server"
-[ -d "$ROOT/aihub-server/src/aihub_server" ] || fail "工作区结构不对，缺少 aihub-server"
+  uv pip install --python .venv/bin/python -e ./packages/common -e ./packages/tools -e \"./packages/processing[local]\" -e ./packages/server"
+[ -d "$ROOT/packages/server/src/aihub_server" ] || fail "工作区结构不对，缺少 packages/server"
 [ -d "$WEB" ] || say "提示: 没找到网页构建目录 $WEB，首页会显示说明页。"
 
 if [ "$ACTION" = restart ]; then stop_stack; fi
@@ -180,7 +181,8 @@ esac
 
 # ---- start ---------------------------------------------------------------
 export AIHUB_WEB_ROOT="$WEB"
-export AIHUB_FIRMWARE_ROOT="$ROOT/aihub-firmware/flash"
+export AIHUB_FIRMWARE_ROOT="${AIHUB_FIRMWARE_ROOT:-$DATA/flash}"
+export AIHUB_CLIENT_ROOT="${AIHUB_CLIENT_ROOT:-$ROOT/.artifacts/client-web}"
 export AIHUB_MODELS_URL="http://127.0.0.1:$MODELS_PORT"
 export AIHUB_MODELS_TOKEN="$TOKEN"
 
@@ -192,7 +194,7 @@ echo $! > "$MEDIA_PIDFILE"
 
 say "启动服务端 (http://127.0.0.1:$PORT)…"
 # shellcheck disable=SC2086
-nohup "$PY" -m aihub_server --data "$DATA" --port "$PORT" $DEVICE_ARGS >>"$LOGFILE" 2>&1 &
+nohup "$PY" -m aihub_server --data "$DATA" --port "$PORT" --client-port "$CLIENT_PORT" $DEVICE_ARGS >>"$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
 "$PY" -m aihub_server.workspace_process remember "$PIDFILE" aihub_server
 

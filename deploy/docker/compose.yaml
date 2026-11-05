@@ -1,12 +1,12 @@
-name: aihub
+name: aihub-core
 
 services:
   aihub-server:
     build:
       # prepare-context.sh assembles this: sibling packages + web + VAD model.
       context: context
-    image: aihub-server:local
-    container_name: aihub-server
+    image: "${AIHUB_IMAGE:-aihub-core:local}"
+    container_name: "${AIHUB_CONTAINER:-aihub-core}"
     # Bearer tokens for the native model workers (see model-host.sh).
     env_file:
       - env/models.env
@@ -36,7 +36,7 @@ services:
     volumes:
       # Same data directory the native model tier reads: recordings, history,
       # tokens and settings.json are shared.
-      - "${AIHUB_DATA:-../../../data}:/data"
+      - "${AIHUB_DATA:-../../data}:/data"
       # Music and file-organiser folders are bind-mounted at the *same absolute
       # path* inside the container, so the host paths saved in settings.json keep
       # working in both deployment modes. configure.sh derives these from the
@@ -44,7 +44,7 @@ services:
       - "${AIHUB_MUSIC_DIR}:/${AIHUB_MUSIC_DIR}:ro"
       - "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"
       # Web Serial flashing assistant (aihub-firmware/flash), read-only.
-      - "${AIHUB_FIRMWARE_DIR:-../../../aihub-firmware/flash}:/firmware:ro"
+      - "${AIHUB_FIRMWARE_DIR:-../../data/flash}:/firmware:ro"
     extra_hosts:
       # Docker Desktop resolves this already; host-gateway keeps it working if
       # the image is ever run under a plain Linux engine.

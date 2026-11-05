@@ -8,10 +8,10 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 DATA="${AIHUB_DATA:-$ROOT/data}"
 WAV="$DATA/.verify-16k.wav"
-CONTAINER="${AIHUB_CONTAINER:-aihub-server}"
+CONTAINER="${AIHUB_CONTAINER:-aihub-core}"
 
 log() { printf '%s\n' "$*"; }
 die() { printf '错误: %s\n' "$*" >&2; exit 1; }

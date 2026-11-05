@@ -227,11 +227,11 @@ client-only listener on loopback port 8768 at `/demo/`; change it with
 `--client-host`/`--client-port`. Create a dedicated credential in the console's
 client connections page. Never use an administrator token in this client.
 
-See [client protocol and hosting](clients/web-demo/README.md) for scoped APIs,
+See [client protocol and hosting](../../docs/migration.md) for scoped APIs,
 source ownership, pause/resume and exact-origin CORS, and
-[Linux deployment](deploy/linux/README.md) for external HTTP models, separate
+[Linux deployment](../../deploy/linux/README.md) for external HTTP models, separate
 systemd services, backups, rollback and required hardware acceptance.
 
-[Per-device credentials and OTA](docs/device-credentials.md) documents the optional
+[Per-device credentials and OTA](../../docs/device-credentials.md) documents the optional
 authenticated hardware identity extension, new USB provisioning, revocation and
 legacy-compatible rollout/rollback.

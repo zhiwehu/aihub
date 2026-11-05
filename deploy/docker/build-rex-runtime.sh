@@ -15,12 +15,12 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 PY="$ROOT/.venv/bin/python"
 DATA="${AIHUB_DATA:-$ROOT/data}"
 SOURCE="$DATA/rex-runtime"
 TARGET="$DATA/rex-runtime-linux"
-IMAGE="${AIHUB_IMAGE:-aihub-server:local}"
+IMAGE="${AIHUB_IMAGE:-aihub-core:local}"
 TORCH="${AIHUB_REX_TORCH:-2.15.0+cpu}"
 INDEX="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 TORCH_INDEX=https://download.pytorch.org/whl/cpu

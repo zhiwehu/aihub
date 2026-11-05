@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 # Optional MQTT + UDP transport for devices that cannot use WebSocket.
 mqtt = ["aiomqtt>=2.5,<3", "cryptography>=46,<49"]
-test = ["pytest>=8"]
+test = ["pytest>=8", "aiomqtt>=2.5,<3", "cryptography>=46,<49"]
 
 [project.scripts]
 aihub-server = "aihub_server.__main__:main"

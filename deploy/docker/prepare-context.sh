@@ -1,14 +1,14 @@
 #!/bin/bash
 # Assemble a small Docker build context from the sibling repos.
 #
-# The workspace layout is aihub/{aihub-common,aihub-tools,aihub-server,aihub-web,...}.
+# Sources come only from this core repository plus an explicit client artifact.
 # Building straight from the workspace root would ship .venv/ and data/ to the
 # daemon, so instead this copies only the four trees the image needs into
 # ./context and the Dockerfile is built from there.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"          # aihub/
+ROOT="$(cd "$HERE/../.." && pwd)"          # aihub/
 CTX="$HERE/context"
 
 [ -x "$ROOT/.venv/bin/python" ] || {
@@ -18,8 +18,9 @@ rm -rf "$CTX"
 mkdir -p "$CTX/pkgs" "$CTX/web" "$CTX/client-web" "$CTX/assets"
 cp "$HERE/Dockerfile" "$CTX/Dockerfile"   # context must be self-contained
 
-for pkg in aihub-common aihub-tools aihub-server; do
-  src="$ROOT/$pkg"
+for kind in common tools server; do
+  pkg="aihub-$kind"
+  src="$ROOT/packages/$kind"
   [ -d "$src/src" ] || { echo "错误: $src 缺少 src/" >&2; exit 1; }
   mkdir -p "$CTX/pkgs/$pkg"
   cp "$src/pyproject.toml" "$src/README.md" "$src/LICENSE" "$CTX/pkgs/$pkg/"
@@ -28,10 +29,12 @@ for pkg in aihub-common aihub-tools aihub-server; do
   echo "  + pkgs/$pkg"
 done
 
-[ -f "$ROOT/aihub-web/public/index.html" ] || {
-  echo "错误: 找不到 $ROOT/aihub-web/public/index.html" >&2; exit 1; }
-cp -R "$ROOT/aihub-web/public/." "$CTX/web/"
-cp -R "$ROOT/aihub-server/clients/web-demo/." "$CTX/client-web/"
+[ -f "$ROOT/apps/admin-web/public/index.html" ] || {
+  echo "错误: 找不到 $ROOT/apps/admin-web/public/index.html" >&2; exit 1; }
+cp -R "$ROOT/apps/admin-web/public/." "$CTX/web/"
+CLIENT_ARTIFACT="${AIHUB_CLIENT_ROOT:-$ROOT/.artifacts/client-web}"
+[ -f "$CLIENT_ARTIFACT/index.html" ] || { echo "Set AIHUB_CLIENT_ROOT to an exported client artifact." >&2; exit 1; }
+"$ROOT/.venv/bin/python" "$ROOT/scripts/install-client.py" "$CLIENT_ARTIFACT" --destination "$CTX/client-web"
 echo "  + web/ ($(find "$CTX/web" -type f | wc -l | tr -d ' ') 个文件)"
 
 # Silero VAD ONNX: the server borrows it from faster_whisper's assets, which are

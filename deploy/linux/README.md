@@ -1,21 +1,22 @@
 # Linux with external HTTP models
 
-Keep all six repositories alongside each other under `/opt/aihub` (or adapt the
-paths below). Use a new Linux virtual environment, never copy the Mac `.venv`.
+Clone the core repository at `/opt/aihub` (or adapt the paths below). No sibling
+source repositories are required. Install browser/firmware release artifacts
+explicitly when needed. Use a fresh Linux environment, never copy the Mac `.venv`.
 Install Python 3.11+, ffmpeg, libsndfile and lsof with your distribution's package
 manager, then install only the base models package:
 
 ```sh
 cd /opt/aihub
 python3 -m venv .venv
-.venv/bin/pip install -e ./aihub-common -e ./aihub-tools -e ./aihub-models -e ./aihub-server
+.venv/bin/pip install -e ./packages/common -e ./packages/tools -e ./packages/processing -e ./packages/server
 ```
 
 Supply a trusted Silero VAD ONNX model. Configure real endpoint/model IDs; the
 following creates a NEW settings file and refuses to overwrite an existing one:
 
 ```sh
-.venv/bin/python aihub-server/deploy/linux/configure.py \
+.venv/bin/python deploy/linux/configure.py \
   --output /var/lib/aihub/settings.json --vad-model /opt/aihub/assets/silero.onnx \
   --asr-url http://127.0.0.1:8000/v1 --asr-model ACTUAL_ASR_ID \
   --llm-url http://127.0.0.1:1234/v1 --llm-model ACTUAL_LLM_ID \
@@ -34,7 +35,7 @@ Copy `runtime.env.example` to `/etc/aihub/runtime.env`, substitute actual IDs an
 a random shared processing token (`python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`).
 Protect the env file with mode 600 and appropriate service-user ownership. Add
 `VOICE_ASR_KEY`, `VOICE_LLM_KEY`, `VOICE_TTS_KEY` there if required; no credentials
-belong in Git. See aihub-models/docs/http-processing.md for provider configuration.
+belong in Git. See packages/processing/docs/http-processing.md for provider configuration.
 
 Create service user `aihub`, give it ownership of `/var/lib/aihub`, and install the
 two `.service` examples under `/etc/systemd/system/`. Adjust all paths first.

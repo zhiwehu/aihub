@@ -74,14 +74,16 @@ class Runtime:
 def web_root(data_root):
     """Where the built web client lives.
 
-    The console is a separate repository now (``aihub-web``), so the server
+    The console lives in apps/admin-web; installed deployments use an explicit
+    static artifact. The server
     serves whatever build is pointed at rather than shipping HTML inside the
     Python package. ``AIHUB_WEB_ROOT`` wins, then ``<data>/web``.
     """
     configured = env_value('WEB_ROOT')
     if configured:
         return Path(configured).expanduser()
-    return Path(data_root) / 'web'
+    bundled = Path(__file__).resolve().parents[4] / 'apps/admin-web/public'
+    return bundled if bundled.is_dir() else Path(data_root) / 'web'
 
 
 def firmware_root(data_root):
@@ -963,7 +965,7 @@ def create_app(root, pipeline_factory=Pipeline, *, device_host=None, device_port
             return web.Response(
                 text='<!doctype html><meta charset="utf-8"><title>AIHub</title>'
                      '<h1>AIHub 语音服务正在运行</h1>'
-                     '<p>网页控制台没有安装。请把 <code>aihub-web</code> 的构建产物放到 '
+                     '<p>网页控制台没有安装。请把 <code>apps/admin-web/public</code> 的构建产物放到 '
                      f'<code>{static_root}</code>，或设置 <code>AIHUB_WEB_ROOT</code>。</p>',
                 content_type='text/html', charset='utf-8')
         return web.FileResponse(page)

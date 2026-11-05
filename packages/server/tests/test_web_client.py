@@ -13,7 +13,15 @@ class WebClientTests(IsolatedAsyncioTestCase):
         self.admin = TestClient(TestServer(create_app(self.tmp.name, pipeline_factory=lambda c,h,r: Pipeline())))
         await self.admin.start_server()
         self.hub = self.admin.app[HUB]
-        self.client = TestClient(TestServer(create_client_app(self.hub)))
+        from pathlib import Path
+        from unittest.mock import patch
+        static = Path(self.tmp.name) / 'client-artifact'
+        static.mkdir()
+        (static / 'index.html').write_text('<!doctype html><title>client artifact</title>')
+        (static / 'client.js').write_text('fetch("/client/v1/recordings");')
+        with patch.dict('os.environ', {'AIHUB_CLIENT_ROOT': str(static)}):
+            client_app = create_client_app(self.hub)
+        self.client = TestClient(TestServer(client_app))
         await self.client.start_server()
         self.first = await (await self.admin.post('/api/client-credentials', json={'name': 'first'})).json()
         self.second = await (await self.admin.post('/api/client-credentials', json={'name': 'second'})).json()
@@ -165,7 +173,7 @@ class WebClientTests(IsolatedAsyncioTestCase):
 
     async def test_explicit_loopback_proxy_origin_compatibility_does_not_grant_admin_access(self):
         from unittest import mock
-        with mock.patch.dict('os.environ', {'AIHUB_CLIENT_LOOPBACK_PROXY':'1'}):
+        with mock.patch.dict('os.environ', {'AIHUB_CLIENT_LOOPBACK_PROXY':'1', 'AIHUB_CLIENT_ROOT':self.tmp.name+'/client-artifact'}):
             client = TestClient(TestServer(create_client_app(self.hub)))
             await client.start_server()
             try:

@@ -1,0 +1,50 @@
+[
+  {
+    "repository": "aihub-common",
+    "source_commit": "4bcf060207abd58c131dc7e2f9ee85f44b23891a",
+    "target": "packages/common",
+    "import_commit": "ce6b4ff6d624935b96bcb8360e6ace3e0d28119d"
+  },
+  {
+    "repository": "aihub-models",
+    "source_commit": "7313877cac022fd310942381cf0e0537b5e68ab2",
+    "target": "packages/processing",
+    "import_commit": "f77f2faccf4cface353902aab69558cfa4efa5f4"
+  },
+  {
+    "repository": "aihub-tools",
+    "source_commit": "1b35d2a59a1a9c0a2d491ab1642e3468b54ad57b",
+    "target": "packages/tools",
+    "import_commit": "505d03bd033361da3b49c36fc4957a0630b3b9e2"
+  },
+  {
+    "repository": "aihub-server",
+    "source_commit": "2c7f97ae0afa62da74bde227ad86d1cdeedac8f7",
+    "target": "packages/server",
+    "import_commit": "8fa42423635743069b9c09b34f21f06732226dbc",
+    "relocations": {
+      "deploy": "deploy",
+      "scripts": "scripts",
+      "docs": "docs",
+      "clients/web-demo": "../aihub-client-web (separate artifact)"
+    }
+  },
+  {
+    "repository": "aihub-web",
+    "source_commit": "989a86c42493608367692108eebf1fa87eef8c06",
+    "target": "apps/admin-web",
+    "import_commit": "e424ecf9d7cafd2f18518f50c0239431235b28d6"
+  },
+  {
+    "repository": "aihub-server",
+    "source_commit": "2c7f97ae0afa62da74bde227ad86d1cdeedac8f7",
+    "source_path": "clients/web-demo",
+    "target": "../aihub-client-web",
+    "split_commit": "cf92794a1e81d2412495d5541b5e24cc22a4a50f"
+  },
+  {
+    "repository": "aihub-firmware",
+    "source_commit": "1f8be4780d8c8b9d7617e7ca874ef03b82a68ec0",
+    "target": "../aihub-firmware"
+  }
+]

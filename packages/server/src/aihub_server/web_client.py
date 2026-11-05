@@ -151,8 +151,10 @@ def create_client_app(hub):
     app.router.add_post(prefix + '/recordings/{identity}/minutes', client_api)
     app.router.add_get(prefix + '/recordings/{identity}/minutes/{job_id}', client_api)
     app.router.add_get(prefix + '/recordings/{identity}/minutes/{job_id}/export', client_api)
-    static = Path(env_value('CLIENT_ROOT') or Path(__file__).resolve().parents[2] / 'clients/web-demo')
+    static = Path(env_value('CLIENT_ROOT') or hub.root / 'client-web')
     async def index(request):
+        if not (static / 'index.html').is_file():
+            return web.Response(text='Web client artifact is not installed; set AIHUB_CLIENT_ROOT.', status=503)
         return web.FileResponse(static / 'index.html')
     app.router.add_get('/', index)
     app.router.add_get('/demo/', index)

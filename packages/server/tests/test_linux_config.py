@@ -7,7 +7,7 @@ from unittest import TestCase, mock
 
 class LinuxConfigurationTests(TestCase):
     def test_http_profile_uses_explicit_models_and_never_overwrites_existing_settings(self):
-        script = Path(__file__).parents[1] / 'deploy/linux/configure.py'
+        script = Path(__file__).parents[3] / 'deploy/linux/configure.py'
         spec = importlib.util.spec_from_file_location('linux_configure', script)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

@@ -20,7 +20,7 @@ class MqttBrokerTests(unittest.IsolatedAsyncioTestCase):
         self.tmp=tempfile.TemporaryDirectory()
         root=Path(self.tmp.name)
         with socket.socket() as s:s.bind(('127.0.0.1',0));self.port=s.getsockname()[1]
-        setup=runpy.run_path(str(Path(__file__).resolve().parents[1]/'scripts/setup_mqtt.py'))['create_config']
+        setup=runpy.run_path(str(Path(__file__).resolve().parents[3]/'scripts/setup_mqtt.py'))['create_config']
         self.cfg=setup(root/'mqtt','127.0.0.1',['cat','other'],self.port,0)
         self.broker=subprocess.Popen([shutil.which('mosquitto'),'-c',str(root/'mqtt/mosquitto.conf')],
             stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

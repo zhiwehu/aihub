@@ -5,7 +5,7 @@ __pycache__/
 .venv/
 build/
 dist/
-data/
+/data/
 *.sqlite3*
 *.log
 .env
@@ -16,3 +16,4 @@ data/
 .DS_Store
 deploy/docker/context/
 deploy/docker/env/
+/.artifacts/
