@@ -113,6 +113,10 @@ async def execute(pipeline,history,result):
   if not isinstance(args,dict):raise ValueError('invalid_slots')
   # A supplied action is used only by explicit host/test callers, never the Rex worker.
   action=args.get('action',action)
+  if isinstance(action,dict):
+   # Some models echo the schema object ({"type":"remember"}) instead of a string.
+   action=action.get('type') or action.get('value')
+  if action is not None and not isinstance(action,str):raise ValueError('invalid_action')
   if action is None:
    pipeline._everyday_question=None
    async with contextlib.aclosing(pipeline.raw_chat(history,system_prompt=pipeline.config['system_prompt']+'本轮没有执行工具，按用户本轮内容自然回答，不声称已执行。')) as source:
