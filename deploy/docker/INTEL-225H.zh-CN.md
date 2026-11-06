@@ -48,8 +48,8 @@ LLM_MODEL=你的LLM模型ID
 
 - 这两项给后处理容器用；管理台里的 ASR/LLM 也填同一组值。
 - `AIHUB_MODELS_TOKEN` 由 `install.sh` 自动生成，`AIHUB_DEPLOY=.` 不用改。
-- 网页客户端页面部署好后，把它的 origin 填到 `CLIENT_ORIGINS`（多个用逗号分隔），
-  页面完整地址填到 `CLIENT_PUBLIC_URL`；没有就先留空。
+- 网页客户端页面部署好后，把它的 origin 填到 `CLIENT_ORIGINS`（多个用逗号分隔）；
+  信任整个局域网时直接填 `*`（仍然需要连接码）。页面完整地址填到 `CLIENT_PUBLIC_URL`。
 
 `install.sh` 会导入镜像、创建 `data/`、启动两个容器。
 

@@ -46,6 +46,25 @@ class WebClientTests(IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get(path, headers=self.auth())).status, 404)
         self.assertEqual((await self.client.get('/client/v1/recordings', headers=self.auth())).status, 200)
 
+    async def test_wildcard_origin_allows_any_lan_page(self):
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'AIHUB_CLIENT_ORIGINS': '*'}):
+            app = create_client_app(self.hub)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        origin = 'http://192.168.1.99:8000'
+        try:
+            preflight = await client.options('/client/v1/recordings', headers={
+                'Origin': origin, 'Access-Control-Request-Method': 'GET',
+                'Access-Control-Request-Headers': 'Authorization'})
+            self.assertEqual(preflight.status, 204)
+            self.assertEqual(preflight.headers.get('Access-Control-Allow-Origin'), origin)
+            response = await client.get('/client/v1/recordings', headers={**self.auth(), 'Origin': origin})
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), origin)
+        finally:
+            await client.close()
+
     async def test_websocket_identity_is_server_assigned_and_resume_is_scoped(self):
         ws, hello = await self.connect(device_id='forged-device')
         sid = hello['session_id']

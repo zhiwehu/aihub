@@ -121,16 +121,21 @@ def create_client_app(hub):
     from .app import HUB, gateway, same_origin
     loopback_proxy = env_value('CLIENT_LOOPBACK_PROXY') == '1'
     allowed_origins = set(filter(None, (value.strip() for value in env_value('CLIENT_ORIGINS', '').split(','))))
+    # Explicit opt-in for a trusted LAN: any page origin may call the token-gated
+    # client API. The credential, not the origin, remains the access boundary.
+    allow_any_origin = '*' in allowed_origins
+    def origin_allowed(origin):
+        return bool(origin) and (allow_any_origin or origin in allowed_origins)
     @web.middleware
     async def guard(request, handler):
         origin = request.headers.get('Origin')
-        if origin and not same_origin(request, origin, loopback_proxy=loopback_proxy) and origin not in allowed_origins:
+        if origin and not same_origin(request, origin, loopback_proxy=loopback_proxy) and not origin_allowed(origin):
             raise web.HTTPForbidden()
         if request.method == 'OPTIONS' and request.path.startswith('/client/'):
             response = web.Response(status=204)
             response.headers.update({'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                                      'Access-Control-Allow-Headers': 'Authorization, Content-Type'})
-            if origin in allowed_origins:
+            if origin_allowed(origin):
                 response.headers['Access-Control-Allow-Origin'] = origin
                 response.headers['Vary'] = 'Origin'
             return response
@@ -148,7 +153,7 @@ def create_client_app(hub):
             'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
             'X-Content-Type-Options': 'nosniff',
             'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
-        if origin in allowed_origins:
+        if origin_allowed(origin):
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Vary'] = 'Origin'
         return response
