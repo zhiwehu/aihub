@@ -63,7 +63,7 @@ docker run --rm -i \
   -v "$REQ:/req.txt:ro" \
   --entrypoint sh "$IMAGE" -c "
 set -e
-pip install -q --upgrade --target /target --index-url $INDEX -r /req.txt 2>&1 | grep -viE 'warning' | tail -3 || true
+pip install -q --upgrade --no-deps --target /target --index-url $INDEX -r /req.txt 2>&1 | grep -viE 'warning' | tail -3 || true
 pip install -q --upgrade --force-reinstall --no-deps --target /target \
   --index-url $TORCH_INDEX 'torch==$TORCH' 2>&1 | grep -viE 'warning' | tail -3 || true
 # PyPI's default torch wheel drags the whole CUDA stack in; the planner runs on CPU.
