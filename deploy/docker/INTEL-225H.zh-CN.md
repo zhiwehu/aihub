@@ -91,7 +91,8 @@ PYENV
 nano .env
 ```
 
-`ASR_*`/`LLM_*` 只给后处理容器用（它的环境变量来自 Compose）。
+`ASR_*`/`LLM_*` 只给后处理容器用（它的环境变量来自 Compose）。不需要鉴权时可以删掉
+Compose 里的 `env_file: [model-keys.env]`，跳过下面的 Key 文件。
 
 TTS 不用配环境变量。首次启动生成的 `settings.json` 除 VAD 外沿用默认值，其中 TTS 默认是
 macOS `say`，容器里用不了，所以只把这一项换成兼容 HTTP API；模型 ID、音色和采样率在
@@ -127,7 +128,7 @@ PYSETTINGS
 
 声音回答前，在管理端「模型」页把 ASR/LLM 切到 HTTP API，填实际地址、模型 ID 和音色。
 
-只有模型服务需要鉴权时才建 `model-keys.env`（没认证可跳过），Key 直接用原服务的：
+模型服务需要鉴权时建 `model-keys.env`，Key 直接用原服务的：
 
 ```bash
 python3 - <<'PYKEY'
