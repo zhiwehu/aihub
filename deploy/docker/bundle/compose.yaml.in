@@ -1,0 +1,34 @@
+name: aihub-225h
+services:
+  processing:
+    image: aihub-processing:@TAG@
+    network_mode: host
+    restart: unless-stopped
+    env_file: [model-keys.env]
+    environment:
+      AIHUB_MODELS_TOKEN: ${AIHUB_MODELS_TOKEN:?set in .env}
+      AIHUB_MINUTES_PROVIDER: http
+      AIHUB_MINUTES_URL: ${LLM_URL:?set LLM_URL}
+      AIHUB_MINUTES_MODEL: ${LLM_MODEL:?set LLM_MODEL}
+      AIHUB_MINUTES_KEY_ENV: VOICE_LLM_KEY
+      AIHUB_MEDIA_ASR_PROVIDER: http
+      AIHUB_MEDIA_ASR_URL: ${ASR_URL:?set ASR_URL}
+      AIHUB_MEDIA_ASR_MODEL: ${ASR_MODEL:?set ASR_MODEL}
+      AIHUB_MEDIA_ASR_KEY_ENV: VOICE_ASR_KEY
+    volumes:
+      - ${AIHUB_DEPLOY}/data:/data
+  core:
+    image: aihub-core:@TAG@
+    network_mode: host
+    restart: unless-stopped
+    env_file: [model-keys.env]
+    environment:
+      AIHUB_MODELS_URL: http://127.0.0.1:8790
+      AIHUB_MODELS_TOKEN: ${AIHUB_MODELS_TOKEN:?set in .env}
+      AIHUB_CLIENT_ORIGINS: ${CLIENT_ORIGINS:-}
+      AIHUB_CLIENT_PUBLIC_URL: ${CLIENT_PUBLIC_URL:-}
+    volumes:
+      - ${AIHUB_DEPLOY}/data:/data
+      - ${AIHUB_DEPLOY}/music:/music:ro
+    command: ["--data", "/data", "--host", "127.0.0.1", "--port", "8765",
+              "--client-host", "0.0.0.0", "--client-port", "8768"]

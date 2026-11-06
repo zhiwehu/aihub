@@ -1,0 +1,17 @@
+# Post-processing only: aihub-common + aihub-models, no inference.
+#
+# Built from deploy/docker/context after prepare-context.sh, with
+# pkgs/aihub-models added. Model access is HTTP (see docs/http-processing.md).
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pkgs/aihub-common /tmp/pkgs/common
+COPY pkgs/aihub-models /tmp/pkgs/models
+RUN pip install /tmp/pkgs/common /tmp/pkgs/models && rm -rf /tmp/pkgs
+
+ENTRYPOINT ["python", "-m", "aihub_models"]
+CMD ["serve", "--data", "/data", "--port", "8790"]
