@@ -176,7 +176,7 @@ def create_client_app(hub):
     for method in ('GET', 'POST'):
         app.router.add_route(method, prefix + '/recordings', client_api)
     app.router.add_get(prefix + '/recordings/{identity}', client_api)
-    for suffix in ('audio', 'transcript', 'speech', 'speech-map', 'clean'):
+    for suffix in ('audio', 'transcript', 'speech', 'speech-map', 'clean', 'ready'):
         app.router.add_get(prefix + '/recordings/{identity}/' + suffix, client_api)
     app.router.add_post(prefix + '/recordings/{identity}/stop', client_api)
     app.router.add_get(prefix + '/recordings/{identity}/minutes', client_api)

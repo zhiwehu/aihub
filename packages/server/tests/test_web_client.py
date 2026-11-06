@@ -95,6 +95,24 @@ class WebClientTests(IsolatedAsyncioTestCase):
         self.assertEqual(own['recordings'][0]['id'], rid)
         self.assertEqual((await self.client.post('/client/v1/recordings/' + rid + '/stop', headers=self.auth(self.second))).status, 404)
 
+    async def test_client_listener_serves_ready_audio(self):
+        # /ready must be routed on the client listener too: the web client's
+        # "denoised download" button calls it, and a missing route returned a
+        # bare 404 even when the recording had speech and a finished clean file.
+        record = self.hub.recordings.start('3' * 32, 'web:' + self.first['id'], 'client')
+        rid = record.id
+        self.hub.store.session('3' * 32, 'web:' + self.first['id'])
+        self.hub.store.source('3' * 32, 'web', self.first['id'])
+        self.hub.recordings.stop(rid, 'test')
+        root = self.hub.recordings.root
+        (root / f'{rid}-speech.wav').write_bytes(b'RIFF' + b'\0' * 40)
+        (root / f'{rid}-ready.wav').write_bytes(b'RIFF-ready')
+        response = await self.client.get(f'/client/v1/recordings/{rid}/ready', headers=self.auth())
+        self.assertEqual(response.status, 200)
+        self.assertEqual(await response.read(), b'RIFF-ready')
+        foreign = await self.client.get(f'/client/v1/recordings/{rid}/ready', headers=self.auth(self.second))
+        self.assertEqual(foreign.status, 404)
+
     async def test_revoked_credential_no_longer_authenticates(self):
         await self.admin.delete('/api/client-credentials/' + self.first['id'])
         self.assertEqual((await self.client.get('/client/v1/recordings', headers=self.auth())).status, 401)
