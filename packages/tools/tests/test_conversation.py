@@ -25,3 +25,8 @@ class ConversationTests(IsolatedAsyncioTestCase):
         async def raw_chat(*args,**kwargs):yield '我可以帮你设置提醒，但需要明确日期和时间。'
         text=''.join([v async for v in reply(SimpleNamespace(raw_chat=raw_chat),[], '普通交流')])
         self.assertEqual(text,'我可以帮你设置提醒，但需要明确日期和时间。')
+
+    async def test_unexecuted_file_claim_is_blocked(self):
+        async def raw_chat(*args,**kwargs):yield '我查到了，你目录下的文件我先看一下。'
+        text=''.join([v async for v in reply(SimpleNamespace(raw_chat=raw_chat),[], '普通交流')])
+        self.assertEqual(text,'这轮没有实际查询或查看。')

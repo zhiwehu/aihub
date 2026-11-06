@@ -110,20 +110,29 @@ class Pipeline:
         # DeepSeek-compatible switch; ignored by providers that do not know it.
         if os.environ.get('AIHUB_LLM_THINKING', '').strip().lower() == 'disabled':
             payload['thinking'] = {'type': 'disabled'}
-        async with self.http.post(self.endpoint('llm', 'chat/completions'),
-                headers=self.headers('llm'), json=payload) as response:
-            self.check(response)
-            count = 0
-            async for event in sse(response):
-                choices = event.get('choices') or []
-                if event.get('error'):
-                    raise ProviderError('provider_stream_error')
-                text = choices[0].get('delta', {}).get('content', '') if choices else ''
-                if text:
-                    count += len(text)
-                    if count > 16000:
-                        raise ProviderError('reply_text_limit')
-                    yield text
+        for attempt in range(2):
+            emitted = False
+            try:
+                async with self.http.post(self.endpoint('llm', 'chat/completions'),
+                        headers=self.headers('llm'), json=payload) as response:
+                    self.check(response)
+                    count = 0
+                    async for event in sse(response):
+                        choices = event.get('choices') or []
+                        if event.get('error'):
+                            raise ProviderError('provider_stream_error')
+                        text = choices[0].get('delta', {}).get('content', '') if choices else ''
+                        if text:
+                            emitted = True
+                            count += len(text)
+                            if count > 16000:
+                                raise ProviderError('reply_text_limit')
+                            yield text
+                return
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+                if emitted or attempt:
+                    raise
+                await asyncio.sleep(.4)
 
     async def speech(self, text):
         text = spoken_text(text)

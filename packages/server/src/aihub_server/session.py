@@ -791,6 +791,11 @@ class Session:
                                                 elapsed_ms=delta.elapsed_ms, code=delta.code, **metadata)
                                 continue
                             if isinstance(delta, ToolNotice):
+                                if delta.name == 'tool_planning':
+                                    # A silent planning marker must not detach the turn:
+                                    # if planning ends in chat/clarification there is no tool
+                                    # result to announce, and the generic ack looked like a result.
+                                    continue
                                 if self.operations and announcement is None:
                                     gate=asyncio.Event()
                                     try:

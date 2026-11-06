@@ -25,22 +25,45 @@ def resolve_date(value,today):
  try:return datetime.strptime(value,'%Y-%m-%d').date()
  except ValueError:raise ValueError('calendar_date_unclear') from None
 
+def clear_pending(pipeline):
+ """Drop a pending clarification and suppress its unspoken notification."""
+ pending=getattr(pipeline,'_calendar_pending',None)
+ pipeline._calendar_pending=None
+ operation_id=(pending or {}).get('operation_id')
+ if not operation_id:return
+ operations=getattr(getattr(pipeline,'runtime',None),'operations',None)
+ if not operations:return
+ try:record=operations.get(operation_id)
+ except (FileNotFoundError,ValueError):return
+ if record.get('delivery')=='pending':
+  record['delivery']='superseded';operations.save(record)
+
 def route(pipeline,history):
  store=getattr(getattr(pipeline,'runtime',None),'calendar',None)
  text=next((m.get('content','') for m in reversed(history) if m.get('role')=='user'),'')
  if not store:return None
+ if re.search(r'倒计时|计时器|计时',text) and re.search(r'提醒|告诉我',text):
+  clear_pending(pipeline)
+  return refusal('计时器结束提醒暂不支持。可以改用日程提醒，或等计时器到点后再告诉我。')
  pending=getattr(pipeline,'_calendar_pending',None)
  if pending and (pending['expires']<time.monotonic() or pending['scope']!=pipeline.session_id):pending=None;pipeline._calendar_pending=None
  if pending and re.fullmatch(r'(?:取消|取消任务|取消设置|算了|先不用了)[。！!]*',text):
-  pipeline._calendar_pending=None;pipeline._calendar_request_seq=getattr(pipeline,'_calendar_request_seq',0)+1
+  clear_pending(pipeline);pipeline._calendar_request_seq=getattr(pipeline,'_calendar_request_seq',0)+1
   return refusal('好的，不会创建这项日程。')
- if is_conversational_turn(text):return None
+ if is_conversational_turn(text):
+  clear_pending(pipeline)
+  return None
  topic=bool(re.search('日程|提醒|安排',text))
+ if pending and topic:
+  # A new calendar request must not reuse the previous missing-slot state.
+  clear_pending(pipeline);pending=None
  if pending and not topic and calendar_answer(text) is None and not is_conversational_turn(text):
   has_time=bool(re.search(r'[0-9零一二三四五六七八九十两]+(?:点|时|分钟后|小时后)|\d{1,2}[:：]\d{2}',text))
   date_only=bool(re.fullmatch(r'(?:今天|明天|后天|(?:本周|下周|周|星期)[一二三四五六日天]|\d{4}-\d{2}-\d{2})[。！!]*',text))
   title_only=pending.get('needs_title') and len(text)<60 and not re.search('什么|天气|新闻|查|问|为什么|怎么|[？?]',text)
   if (has_time or date_only or title_only) and not re.search(r'什么|是否|是不是|为什么|怎么|几点|吗|[？?]',text):text=pending['text']+'；用户补充（以此为准）：'+text;topic=True
+  else:
+   clear_pending(pipeline);pending=None
  explicit=bool(re.search(r'查|看|有哪些|有什么|什么提醒|我的提醒|几项|几点|什么时候|哪天|列表|添加|新建|创建|设置|记一下|记下来|取消|删除|提醒(?:我|一下|下)|安排(?:个|一个|一场)',text) or re.search(r'(?:今天|明天|后天|点|分钟后|小时后).*提醒',text) or re.fullmatch(r'(?:(?:我|今天|明天|后天|本周|下周|本月|的))*?(?:日程|提醒|安排)[？?。！!]*',text))
  if not explicit:return None
  if not topic or re.search(r'怎么|如何|什么意思|解释|介绍|支持.*吗',text):return None
@@ -54,8 +77,8 @@ async def execute(pipeline,history,text,store,sequence):
   from .background import current_operation
   operation=current_operation.get()
   if operation is not None:operation['calendar_question']=True
-  if getattr(pipeline,'_calendar_request_seq',None)==sequence:pipeline._calendar_pending={'text':text[-2000:],'scope':pipeline.session_id,'expires':time.monotonic()+300,'needs_title':needs_title}
- def clear_pending():
+  if getattr(pipeline,'_calendar_request_seq',None)==sequence:pipeline._calendar_pending={'text':text[-2000:],'scope':pipeline.session_id,'expires':time.monotonic()+300,'needs_title':needs_title,'operation_id':operation['id'] if operation else None}
+ def clear_current():
   if getattr(pipeline,'_calendar_request_seq',None)==sequence:pipeline._calendar_pending=None
  yield ToolNotice('calendar','收到，我来处理日程。')
  if re.search('每天|每周|每月|每年|重复|周期',text):yield '首版支持单次日程和提醒，请明确哪一天、几点以及提醒事项。';return
@@ -138,7 +161,7 @@ async def execute(pipeline,history,text,store,sequence):
   yield ToolStatus('calendar','started',arguments=args,planner='calendar_slots')
   async with CommonToolsClient(data_root=pipeline.runtime.data_root,env=env,timeout=20) as client:result=await client.call('calendar',args)
   if result.get('isError'):raise MCPError(result.get('structuredContent',{}).get('error',{}).get('code','calendar_operation_failed'))
-  data=json.loads(result['content'][0]['text']);clear_pending();yield ToolStatus('calendar','completed')
+  data=json.loads(result['content'][0]['text']);clear_current();yield ToolStatus('calendar','completed')
   def spoken(value):
    date=datetime.fromisoformat(value);return date.strftime('%Y年%m月%d日%H点%M分' if date.year!=now.year else '%m月%d日%H点%M分')
   if action=='create' and data['status']=='cancelled':yield '这项请求对应的日程已取消，未重新创建。';return

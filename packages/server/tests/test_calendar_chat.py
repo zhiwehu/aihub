@@ -77,3 +77,25 @@ class CalendarChatTests(unittest.IsolatedAsyncioTestCase):
    started=next(v for v in replies if getattr(v,'phase',None)=='started')
    begin=datetime.fromisoformat(started.arguments['range_start']);end=datetime.fromisoformat(started.arguments['range_end'])
    self.assertEqual(calls,[True]);self.assertEqual(begin.weekday(),0);self.assertEqual((end-begin).days,1)
+
+ async def test_timer_triggered_reminder_is_rejected_without_calendar_state(self):
+  with tempfile.TemporaryDirectory() as root:
+   store=CalendarStore(root)
+   class Pipeline:
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    async def raw_chat(self,*args,**kwargs):raise AssertionError('timer reminder must not call the calendar model')
+   p=Pipeline();replies=[v async for v in route(p,[{'role':'user','content':'倒计时结束的时候，告诉我，提醒我去跑步。'}])]
+   self.assertIn('计时器结束提醒暂不支持',replies[-1]);self.assertIsNone(p._calendar_pending)
+   self.assertFalse(store.load()['events'])
+
+ async def test_new_topic_clears_a_pending_calendar_question(self):
+  with tempfile.TemporaryDirectory() as root:
+   store=CalendarStore(root)
+   class Pipeline:
+    runtime=SimpleNamespace(calendar=store,data_root=root);session_id='one';device_id='fixture';config=DEFAULT
+    async def raw_chat(self,*args,**kwargs):yield json.dumps({'title':'开会','date':'明天'})
+   p=Pipeline();[v async for v in route(p,[{'role':'user','content':'明天提醒我开会'}])]
+   self.assertTrue(p._calendar_pending)
+   self.assertIsNone(route(p,[{'role':'user','content':'下个月想买一台洗衣机'}]))
+   self.assertIsNone(p._calendar_pending)
+   self.assertFalse(store.load()['events'])

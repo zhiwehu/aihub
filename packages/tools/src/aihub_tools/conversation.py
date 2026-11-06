@@ -5,6 +5,8 @@ import re
 _ACTIONS=r'(?:设置|设定|添加|创建|取消|删除|记录|同步|优化|修改|更新|安排|完成)'
 _UNEXECUTED=re.compile(r'(?:已经?|已为.{0,8}).{0,4}'+_ACTIONS+
     r'|(?:帮你|为你|为您|给你).{0,4}'+_ACTIONS+r'(?:好|完|了|成功)')
+_RETRIEVAL=re.compile(r'(?:我|已经?|刚才|刚刚).{0,8}(?:查到了|看到了|打开了|读取了|浏览了|'
+    r'查过|看过|打开过|读取过|查询了|查看过|检索了)')
 
 
 async def reply(pipeline, history, instructions):
@@ -20,9 +22,13 @@ async def reply(pipeline, history, instructions):
             while match:=re.search(r'[。！？!?\n]',pending):
                 sentence,pending=pending[:match.end()],pending[match.end():]
                 sentence=sentence.replace('（回复被打断）','')
+                if _RETRIEVAL.search(sentence):
+                    yield '这轮没有实际查询或查看。';return
                 if _UNEXECUTED.search(sentence):
                     yield '这轮没有执行设置或修改操作。';return
                 yield sentence
         if pending:
             pending=pending.replace('（回复被打断）','')
-            yield '这轮没有执行设置或修改操作。' if _UNEXECUTED.search(pending) else pending
+            yield ('这轮没有实际查询或查看。' if _RETRIEVAL.search(pending)
+                   else '这轮没有执行设置或修改操作。' if _UNEXECUTED.search(pending)
+                   else pending)
