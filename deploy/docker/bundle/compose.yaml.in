@@ -27,6 +27,7 @@ services:
       AIHUB_MODELS_TOKEN: ${AIHUB_MODELS_TOKEN:?set in .env}
       AIHUB_CLIENT_ORIGINS: ${CLIENT_ORIGINS:-}
       AIHUB_CLIENT_PUBLIC_URL: ${CLIENT_PUBLIC_URL:-}
+      AIHUB_LLM_THINKING: ${LLM_THINKING:-}
     volumes:
       - ${AIHUB_DEPLOY}/data:/data
       - ${AIHUB_DEPLOY}/music:/music:ro

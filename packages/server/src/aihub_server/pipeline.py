@@ -106,9 +106,12 @@ class Pipeline:
         token_limit=c['max_tokens'] if max_tokens is None else max_tokens
         if type(token_limit) is not int or not 16<=token_limit<=2048:raise ProviderError('invalid_token_limit')
         messages = [{'role':'system', 'content':system_prompt if system_prompt is not None else self.config['system_prompt']}] + history
+        payload = dict(model=c['model'], messages=messages, max_tokens=token_limit, stream=True)
+        # DeepSeek-compatible switch; ignored by providers that do not know it.
+        if os.environ.get('AIHUB_LLM_THINKING', '').strip().lower() == 'disabled':
+            payload['thinking'] = {'type': 'disabled'}
         async with self.http.post(self.endpoint('llm', 'chat/completions'),
-                headers=self.headers('llm'), json=dict(model=c['model'], messages=messages,
-                                                     max_tokens=token_limit, stream=True)) as response:
+                headers=self.headers('llm'), json=payload) as response:
             self.check(response)
             count = 0
             async for event in sse(response):
