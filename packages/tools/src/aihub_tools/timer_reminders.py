@@ -16,6 +16,14 @@ class TimerReminders:
     if not timer['device'] and not timer['session']:
      self.operations.notify(identity,'ui-timer','计时结束：'+timer['name'],timer['name']+'，时间到了。',kind='timer',timer_id=timer['id'],generation=timer['generation'],deadline=timer['deadline'])
      self.operations.announced(identity)
+    else:
+     # The timer expired while its client was offline; do not announce it on
+     # reconnect, and cancel any notification queued before the disconnect.
+     self.store.expire_timer(timer['id'],timer['generation'])
+     try:record=self.operations.get(identity)
+     except FileNotFoundError:record=None
+     if record and record['delivery']=='pending':
+      record['delivery']='cancelled';self.operations.save(record)
     continue
    if len(session.notification_ids)>=25:continue
    self.operations.notify(identity,session.id,'计时结束：'+timer['name'],timer['name']+'，时间到了。',kind='timer',timer_id=timer['id'],generation=timer['generation'],deadline=timer['deadline'])

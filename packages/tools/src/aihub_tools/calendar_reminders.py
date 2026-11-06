@@ -19,16 +19,21 @@ class CalendarReminders:
    try:record=self.operations.get(notice_id)
    except FileNotFoundError:record=None
    if record and record['delivery']=='announced':self.store.mark(identity,'announced');continue
-   speaking=any(getattr(getattr(session,'turn',None),'notification_id','')==notice_id for session in self.sessions.values())
-   if now-event['remind_at']>cfg['late_minutes']*60 and not speaking:
-    self.cancel_notification(identity);self.store.mark(identity,'missed');self.publish({'type':'calendar.changed','event_id':identity,'status':'missed'});continue
-   if event['reminder_status']=='pending':self.store.mark(identity,'due');self.publish({'type':'calendar.changed','event_id':identity,'status':'due'})
    title=event['title'];when=datetime.fromtimestamp(event['start_time'],ZoneInfo(event['timezone'])).strftime('%m月%d日%H点%M分')
    text='日程提醒：'+when+'，'+title+'。'
    if not event['device_id']:
     self.store.mark(identity,'page');self.publish({'type':'calendar.reminder','event_id':identity,'text':text});continue
    session=next((s for s in self.sessions.values() if s.device_id==event['device_id'] and not s.closed),None)
-   if session is None or len(session.notification_ids)>=25 or sent>=20:continue
+   if session is None:
+    # The reminder fired while the target device was offline. Do not replay it
+    # when the device reconnects; mark it missed instead.
+    self.cancel_notification(identity);self.store.mark(identity,'missed')
+    self.publish({'type':'calendar.changed','event_id':identity,'status':'missed'});continue
+   speaking=any(getattr(getattr(s,'turn',None),'notification_id','')==notice_id for s in self.sessions.values())
+   if now-event['remind_at']>cfg['late_minutes']*60 and not speaking:
+    self.cancel_notification(identity);self.store.mark(identity,'missed');self.publish({'type':'calendar.changed','event_id':identity,'status':'missed'});continue
+   if event['reminder_status']=='pending':self.store.mark(identity,'due');self.publish({'type':'calendar.changed','event_id':identity,'status':'due'})
+   if len(session.notification_ids)>=25 or sent>=20:continue
    self.operations.notify(notice_id,session.id,'日程提醒：'+title,text,kind='calendar',event_id=identity)
    self.store.mark(identity,'queued');sent+=1
  def cancel_notification(self,identity):

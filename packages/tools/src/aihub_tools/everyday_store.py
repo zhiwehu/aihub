@@ -106,6 +106,14 @@ class EverydayStore:
    if action=='cancel':row.update(state='cancelled',generation=row['generation']+1)
    return output([row])
   return self.transaction('timers',apply)
+ def expire_timer(self,identity,generation):
+  def apply(rows):
+   for row in rows:
+    if row['id']==identity and row['generation']==generation and row['state']=='running':
+     row.update(state='expired',remaining_seconds=0)
+     return True
+   return False
+  return self.transaction('timers',apply)
  def due(self,now=None):
   now=time.time() if now is None else now
   return self.transaction('timers',lambda rows:[r.copy() for r in rows if r['state']=='running' and 0<=now-r['deadline']<=300])
