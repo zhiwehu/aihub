@@ -194,6 +194,9 @@ async def health(request):
                         model=upstream.get('asr_model'))
     except Exception as exc:
         info['error'] = type(exc).__name__
+    info['tts_transport'] = 'websocket' if TTS_MODE != 'http' else 'http'
+    if info['tts_transport'] == 'websocket':
+        info['tts_ws_url'] = TTS_WS
     return web.json_response(info)
 
 

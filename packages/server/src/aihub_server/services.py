@@ -63,7 +63,7 @@ class ServiceManager:
     async def _health(self,kind,record):
         try:
             headers={} if record.get('legacy') else {'Authorization':'Bearer '+record['token']}
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=.6)) as client:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.5)) as client:
                 async with client.get(f'http://127.0.0.1:{record["port"]}/health',headers=headers) as response:
                     if response.status!=200:return None
                     value=await response.json()
@@ -76,7 +76,7 @@ class ServiceManager:
         key = os.environ.get(cfg.get('key_env', ''), '')
         headers = {'Authorization': 'Bearer ' + key} if key else {}
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=.6)) as client:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.5)) as client:
                 async with client.get(cfg['url'].rstrip('/') + '/models', headers=headers,
                                       allow_redirects=False) as response:
                     if response.status in (404, 405):
@@ -97,13 +97,31 @@ class ServiceManager:
         except (ValueError, AttributeError):
             return 'unknown'
 
+    async def _external_detail(self, kind, cfg):
+        """Surface a bridge's upstream transport without changing the facade."""
+        if kind != 'tts' or cfg.get('provider') != 'http':
+            return {}
+        base = (cfg.get('url') or '').rstrip('/')
+        if base.endswith('/v1'):
+            base = base[:-3]
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=.6)) as client:
+                async with client.get(base + '/health') as response:
+                    if response.status != 200:
+                        return {}
+                    data = await response.json()
+            return {key: data[key] for key in ('tts_transport', 'tts_ws_url') if key in data}
+        except (aiohttp.ClientError, OSError, TimeoutError, ValueError, AttributeError):
+            return {}
+
     async def status(self,kind):
         if kind not in KINDS:raise ServiceError('invalid_service')
         cfg=self.config()[kind];provider=cfg['provider']
         if provider!='builtin':
+            detail=await self._external_detail(kind,cfg) if provider=='http' else {}
             return dict(kind=kind,managed=False,provider=provider,model=cfg['model'],
                 state={'http':'external','mlx':'embedded','macos':'system'}.get(provider,'external'),
-                health=await self._external_health(cfg) if provider=='http' else 'system')
+                health=await self._external_health(cfg) if provider=='http' else 'system',**detail)
         record=self._record(kind);process=self._owned(kind,record)
         if not process:
             if record and kind not in self.errors:

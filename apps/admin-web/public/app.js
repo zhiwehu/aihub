@@ -549,6 +549,7 @@ function renderServices() {
     if (item.needs_restart) detail.push("模型已修改，请重启生效");
     if (item.error) detail.push(item.error);
     if (item.health && item.provider === 'http') detail.push({available:'模型探测通过', unavailable:'服务不可达或拒绝访问', model_missing:'服务未列出配置的模型', unknown:'服务未提供可验证的模型发现接口'}[item.health] || item.health);
+    if (item.kind === 'tts' && item.tts_transport === 'websocket') detail.push("上游 WebSocket 流式");
     if (!item.managed) detail.push("由外部部署管理");
     status.textContent = detail.join(" · ");
     status.classList.toggle("error", ["failed", "blocked"].includes(item.state));
