@@ -145,28 +145,32 @@ holds bearer keys — mode 600, never commit.
 
 ## Clients on other machines (LAN)
 
-By default both the console and the client listener publish on loopback. To open
-the web client from another machine, publish only the client listener and keep
-the console private:
+The recommended topology keeps the microphone working: the **page runs on the
+client machine's localhost**, the server stays on the other machine.
 
 ```sh
-# .env
-AIHUB_CLIENT_BIND=0.0.0.0
-AIHUB_CLIENT_LOOPBACK_PROXY=0
-AIHUB_CLIENT_PUBLIC_URL=http://192.168.1.50:8768/demo/
-# Only needed when the page itself is hosted on another origin:
-# AIHUB_CLIENT_ORIGINS=http://192.168.1.50:8768
+# client machine (needs Node + the aihub-client-web checkout)
+cd aihub-client-web
+npm run build && npm run serve        # http://127.0.0.1:8788/demo/
 ```
 
-Open `AIHUB_CLIENT_PUBLIC_URL` on the other machine and paste a connection code
-generated in the console. The page always talks to its own origin, so no server
-address has to be typed anywhere.
+Open `http://127.0.0.1:8788/demo/?server=http://192.168.1.50:8768`, paste a
+connection code from the console, and connect. `localhost` is a secure context,
+so the microphone is available even though the API is plain HTTP on the LAN. The
+address is remembered after the first successful connection; `?server=` only
+prefills it, so nothing is hard-coded.
 
-Microphone caveat: browsers expose `getUserMedia` only in a secure context.
-`http://localhost` qualifies, a plain `http://192.168.x.x` address does not — chat
-and recording start, but the microphone is refused. For voice from another
-machine put the client listener behind HTTPS, or use the device path (8766),
-which carries its own credentials and has no such restriction.
+Allow that page origin on the server (a client credential is still required):
+
+```sh
+# .env on the server
+AIHUB_CLIENT_ORIGINS=http://127.0.0.1:8788,http://localhost:8788
+```
+
+Serving the page from the server instead (`AIHUB_CLIENT_BIND=0.0.0.0`) also works
+for text and file browsing, but browsers refuse the microphone on a plain
+`http://192.168.x.x` origin. For voice without a local server, terminate HTTPS in
+front of the client listener.
 
 ## Security notes
 
