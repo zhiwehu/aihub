@@ -122,8 +122,6 @@ def render_markdown(result, template, recording):
         f"- 转写：{result['stats']['transcript_lines']} 行"
         + (f"，{result['stats']['speakers']} 位匿名发言人"
            if result['stats']['speakers'] else ''),
-        f"- 生成模型：`{result['model_id']}`（本地）",
-        f"- 转写 SHA-256：`{result['transcript_sha256'][:16]}…`",
         f"- 生成时间：{_when(result['generated_at'])}",
     ]
     out.extend(meta)
@@ -139,23 +137,16 @@ def render_markdown(result, template, recording):
                 out.append(f"### {index}. {topic.get('title') or '未命名议题'}")
                 if topic.get('summary'):
                     out.extend([topic['summary'], ''])
-                for evidence in topic.get('evidence') or []:
-                    out.append(f"> 证据：{_evidence_text([evidence])}")
-                    out.append('')
             if section.get('key_points'):
                 out.append('### 关键点')
                 for point in section['key_points']:
                     out.append(f"- {point.get('text')}")
-                    if point.get('evidence'):
-                        out.append(f"  > 证据：{_evidence_text(point['evidence'])}")
                 out.append('')
         elif section['kind'] == 'decisions':
             if not section['items']:
                 out.extend(['本段没有已确认决策。', ''])
             for item in section['items']:
                 out.append(f"- **已确认**：{item.get('text')}")
-                if item.get('evidence'):
-                    out.append(f"  > 证据：{_evidence_text(item['evidence'])}")
             out.append('')
         elif section['kind'] == 'proposals':
             if not section['items'] and not section.get('questions'):
@@ -164,19 +155,15 @@ def render_markdown(result, template, recording):
                 status = {'rejected': '已否决', 'open': '未决',
                           'proposed': '提议'}.get(item.get('status'), '未决')
                 out.append(f"- **{status}**：{item.get('text')}")
-                if item.get('evidence'):
-                    out.append(f"  > 证据：{_evidence_text(item['evidence'])}")
             for question in section.get('questions') or []:
                 out.append(f"- **待确认**：{question.get('text')}")
-                if question.get('evidence'):
-                    out.append(f"  > 证据：{_evidence_text(question['evidence'])}")
             out.append('')
         elif section['kind'] == 'actions':
             if not section['items']:
                 out.extend(['没有提取到行动项。', ''])
             else:
-                out.extend(['| 任务 | 负责人 | 截止 | 状态 | 证据 |',
-                            '|---|---|---|---|---|'])
+                out.extend(['| 任务 | 负责人 | 截止 | 状态 |',
+                            '|---|---|---|---|'])
                 for item in section['items']:
                     owner = item.get('owner') or '未明确'
                     due = item.get('due_date') or '未明确'
@@ -188,27 +175,22 @@ def render_markdown(result, template, recording):
                     out.append(
                         f"| {_markdown_escape(item.get('task'))} | "
                         f"{_markdown_escape(owner)} | {_markdown_escape(due)} | "
-                        f"{status} | {_markdown_escape(_evidence_text(item.get('evidence')))} |")
+                        f"{status} |")
                 out.append('')
         elif section['kind'] == 'risks':
             if not section['items'] and not section.get('questions'):
                 out.extend(['没有提取到风险或待确认事项。', ''])
             for item in section['items']:
                 out.append(f"- **风险/阻塞**：{item.get('text')}")
-                if item.get('evidence'):
-                    out.append(f"  > 证据：{_evidence_text(item['evidence'])}")
             for question in section.get('questions') or []:
                 out.append(f"- **待确认**：{question.get('text')}")
-                if question.get('evidence'):
-                    out.append(f"  > 证据：{_evidence_text(question['evidence'])}")
             out.append('')
     coverage = result.get('coverage') or {}
     if coverage.get('chunks_failed'):
         out.extend(['## 生成说明', '',
                     f"本次生成有 {coverage['chunks_failed']} 个转写片段失败，"
                     '纪要可能遗漏该片段内容；可以重新生成。', ''])
-    out.append('> 本纪要由本机模型根据录音转写生成，匿名说话人标签不代表真实姓名；'
-               '证据时间戳可回到录音播放器核对。')
+    out.append('> 本纪要由本机模型根据录音转写生成，匿名说话人标签不代表真实姓名。')
     return '\n'.join(out).strip() + '\n'
 
 

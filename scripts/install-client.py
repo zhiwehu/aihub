@@ -5,7 +5,7 @@ import json
 import shutil
 from pathlib import Path
 
-FILES = {'index.html', 'client.js', 'chat-view.js', 'tool-calls.mjs', 'audio.js', 'capture.js', 'style.css', 'LICENSE'}
+FILES = {'index.html', 'client.js', 'chat-view.js', 'minutes-view.js', 'tool-calls.mjs', 'audio.js', 'capture.js', 'style.css', 'LICENSE'}
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('artifact', type=Path)
