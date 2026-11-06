@@ -21,14 +21,15 @@ Compose 插件，然后：
 
 ```bash
 mkdir -p "$HOME/aihub-src" && cd "$HOME/aihub-src"
-git clone git@github.com:zhiwehu/aihub.git
-git clone git@github.com:zhiwehu/aihub-client-web.git
+git clone https://github.com/zhiwehu/aihub.git
+git clone https://github.com/zhiwehu/aihub-client-web.git
 cd aihub && ./scripts/install.sh --dev
 cd ../aihub-client-web && node scripts/build.mjs
 cd ../aihub
 .venv/bin/python scripts/install-client.py ../aihub-client-web/dist
 ```
 
+HTTPS 不通时改用 `git@github.com:` 地址，并先配置好 SSH Key。
 页面地址：`http://<服务器IP>:8768/demo/`。
 
 ## 2. 构建镜像
