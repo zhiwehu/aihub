@@ -191,6 +191,16 @@ async def chat(pipeline, history):
         pipeline._previous_tool_plan=None
         yield '好的，我不会开始播放音乐。'
         return
+    if (workflow is None and cfg.get('shopping_list') and not is_conversational_turn(latest)
+            and calendar_answer(latest) is None
+            and re.search(r'(?:想|要|准备|打算|帮我|给我)\s*买|买(?:一|个|台|件|些|点)',latest)):
+        # A time expression such as "下个月" made Rex answer as chat and drop the
+        # purchase. The closed shopping schema can still add the item without a date.
+        from .everyday_chat import execute
+        pipeline._previous_tool_plan=None
+        async with contextlib.aclosing(execute(pipeline,history,{'tool':'shopping_list','arguments':{}})) as source:
+            async for value in source:yield value
+        return
     local=getattr(pipeline,'runtime',None)
     extensions=getattr(local,'extensions',None)
     extra=extensions.catalogue() if extensions else []
