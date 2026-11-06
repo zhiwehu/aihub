@@ -194,14 +194,7 @@
             <p id="client-access-result" class="hint" role="status" aria-live="polite"></p>
             <details class="access-manage"><summary>管理已添加的网页</summary><p class="hint">取消连接权限会断开这个网页，但不会删除已有记录。</p><button id="client-access-refresh" type="button" class="text-button">刷新列表</button><div id="client-access-list"></div></details>
           </article>
-          <details class="panel access-advanced"><summary>高级：手动连接其他设备</summary>
-            <p class="hint">通常不需要操作。连接喵伴，请使用下方的 USB 配网向导；这里仅供手动接入设备时使用。</p>
-            <form id="device-access-form"><label>设备编号（MAC 地址）<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="secondary">生成设备连接码</button></form>
-            <p id="device-access-result" class="hint" role="status"></p>
-            <label id="device-access-secret" hidden>设备连接码（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
-            <label id="device-access-ota-wrap" hidden>设备连接地址（OTA）<input id="device-access-ota" readonly autocomplete="off"></label>
-            <button id="device-access-refresh" type="button" class="text-button">刷新设备列表</button><div id="device-access-list"></div>
-          </details>
+          
           <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
           <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
           <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>
@@ -233,18 +226,32 @@
               <h3>其他配网方式</h3><button type="button" class="secondary" id="echoear-copy-setup">复制 VoiceHub 连接入口</button><p id="echoear-setup-status" class="hint" role="status">供设备热点配网页使用。</p>
             </details>
           </article>
-          <details id="connection-advanced" class="onboarding-guide"><summary>高级连接设置 <small>供管理员使用，普通使用无需修改</small></summary><p class="hint">用于配置设备接入服务。网页客户端无需修改这些设置。</p>
-          <div class="connection-grid">
-            <article class="panel"><div class="section-heading"><h2>WebSocket 设备监听</h2><span class="tag" id="ws-device-state">读取中</span></div><p id="ws-console-address" class="hint"></p><p id="ws-device-address" class="hint"></p>
+          <article class="panel onboarding-guide"><div class="section-heading"><h2>已连接设备</h2><span id="connections-online-count" class="tag">0 在线</span></div><div id="connections-devices"></div></article>
+          <div id="connection-advanced-home" hidden></div>
+        <details id="connection-advanced" class="onboarding-guide"><summary>高级设置 <small>设备接入调试用，日常连接喵伴不需要打开</small></summary>
+          <p class="hint">这里只影响设备怎么接入，不影响网页聊天。设备连不上或需要手动接入时再打开。</p>
+          <article class="panel"><div class="section-heading"><h2>WebSocket 设备监听</h2><span class="tag" id="ws-device-state">读取中</span></div><p id="ws-console-address" class="hint"></p><p id="ws-device-address" class="hint"></p>
               <form id="ws-connection-form"><label for="ws-device-host">设备监听 IPv4</label><input id="ws-device-host" required placeholder="选择当前电脑的局域网地址" list="local-addresses"/><label for="ws-device-port">设备监听端口</label><input id="ws-device-port" type="number" min="1" max="65535" required value="8766"/><button class="secondary" type="submit">保存 WebSocket 配置</button></form>
               <p class="hint">此监听仅提供设备接入，不开放管理台。设备仍需访问令牌。停止或重启会断开该监听上的设备。</p><div class="button-row" id="ws-connection-actions"><button class="secondary" type="button" data-action="start">启动</button><button class="secondary" type="button" data-action="stop">停止</button><button class="secondary" type="button" data-action="restart">重启</button></div>
             </article>
-            <article class="panel"><div class="section-heading"><h2>MQTT + UDP 网关</h2><span class="tag" id="mqtt-connection-state">读取中</span></div><p id="mqtt-connection-warning" class="hint"></p>
+          <details class="nested-advanced"><summary>MQTT + UDP 网关 <small>仅用于自建 Broker 的特殊部署</small></summary>
+          <article class="panel"><div class="section-heading"><h2>MQTT + UDP 网关</h2><span class="tag" id="mqtt-connection-state">读取中</span></div><p id="mqtt-connection-warning" class="hint"></p>
               <form id="mqtt-connection-form"><label for="mqtt-broker-host">Broker IPv4</label><input id="mqtt-broker-host" required list="local-addresses"/><label for="mqtt-broker-port">Broker 端口</label><input id="mqtt-broker-port" type="number" min="1" max="65535" required/><label for="mqtt-udp-host">UDP 监听 / 通告 IPv4</label><input id="mqtt-udp-host" required list="local-addresses"/><label for="mqtt-udp-port">UDP 音频端口</label><input id="mqtt-udp-port" type="number" min="0" max="65535" required/><fieldset><legend>允许接入的已配置设备</legend><div id="mqtt-configured-devices"></div></fieldset><button class="secondary" type="submit">保存 MQTT 配置</button></form>
               <p class="hint"><a href="https://github.com/zhiwehu/miaoban/blob/feature/aihub-control-center/docs/MQTT_UDP.md" target="_blank" rel="noopener noreferrer">Broker 与设备初始化说明</a></p><p class="hint">先停止网关再修改配置。网关连接已有 Broker，不负责安装或启停 Broker。密码、ACL 和配网令牌沿用私有配置。</p><div class="button-row" id="mqtt-connection-actions"><button class="secondary" type="button" data-action="start">启动</button><button class="secondary" type="button" data-action="stop">停止</button><button class="secondary" type="button" data-action="restart">重启</button></div>
             </article>
-          </div><datalist id="local-addresses"></datalist><p id="local-address-hint" class="hint"></p></details>
-          <article class="panel onboarding-guide"><div class="section-heading"><h2>已连接设备</h2><span id="connections-online-count" class="tag">0 在线</span></div><div id="connections-devices"></div></article>
+          </details>
+          <details class="nested-advanced"><summary>手动接入其他设备 <small>没有 USB 数据线时使用</small></summary>
+          <p class="hint">通常不需要操作。连接喵伴优先用上方的 USB 向导；这里供手动填写设备编号（MAC 地址）接入。</p>
+          <p class="hint">通常不需要操作。连接喵伴，请使用下方的 USB 配网向导；这里仅供手动接入设备时使用。</p>
+            <form id="device-access-form"><label>设备编号（MAC 地址）<input id="device-access-id" required maxlength="80" autocomplete="off"></label><button class="secondary">生成设备连接码</button></form>
+            <p id="device-access-result" class="hint" role="status"></p>
+            <label id="device-access-secret" hidden>设备连接码（仅显示一次）<input id="device-access-token" readonly autocomplete="off"></label>
+            <label id="device-access-ota-wrap" hidden>设备连接地址（OTA）<input id="device-access-ota" readonly autocomplete="off"></label>
+            <button id="device-access-refresh" type="button" class="text-button">刷新设备列表</button><div id="device-access-list"></div>
+          </details>
+          <datalist id="local-addresses"></datalist><p id="local-address-hint" class="hint"></p>
+        </details>
+        
         </section>
         <section data-panel="models" hidden>
           <div class="section-intro">

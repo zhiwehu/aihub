@@ -56,8 +56,9 @@ function drawGuide() {
   if(installer){
     installer.hidden=!usbPanel;
     const usbAdvanced=installer.querySelector('.echoear-advanced');
-    if(usbPanel){if(usbAdvanced&&advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
-    else if(advanced.previousElementSibling!==installer)installer.after(advanced);
+    const home=$('connection-advanced-home');
+    if(usbPanel&&usbAdvanced){if(advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
+    else if(home&&advanced.previousElementSibling!==home)home.after(advanced);
   }
   $('client-guide-title').closest('article').hidden=usbPanel||client.id==='web';
   window.dispatchEvent(new CustomEvent('aihub:firmware',{detail:client.firmware}));

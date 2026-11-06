@@ -1770,6 +1770,10 @@ footer {
 .onboarding-section-title { font-size: 17px; margin: 22px 0 16px; }
 [data-panel="connections"] summary { cursor:pointer; font-weight:600; padding:12px 0; }
 [data-panel="connections"] summary small { display:block; font-weight:400; color:var(--muted); margin:6px 0 0 20px; }
+[data-panel="connections"] .nested-advanced { margin:12px 0 0; border-top:1px solid var(--line); padding-top:4px; }
+[data-panel="connections"] .nested-advanced > summary { padding:10px 0; color:var(--teal); font-size:14px; }
+[data-panel="connections"] .nested-advanced > summary small { margin:4px 0 0; }
+[data-panel="connections"] #connection-advanced > summary { font-size:15px; }
 [data-panel="connections"] .section-heading { flex-wrap:wrap; gap:12px; }
 [data-panel="connections"] .tag { max-width:100%; white-space:normal; line-height:1.6; }
 [data-panel="connections"] .connection-install-details { flex-basis:100%; }
