@@ -62,6 +62,26 @@ class WebClientTests(IsolatedAsyncioTestCase):
             response = await client.get('/client/v1/recordings', headers={**self.auth(), 'Origin': origin})
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), origin)
+            # A page served by this listener may talk to another origin (the LAN
+            # address), so the page CSP must allow it too; CORS alone is not enough.
+            self.assertIn("connect-src 'self' http: https: ws: wss:",
+                          response.headers.get('Content-Security-Policy', ''))
+        finally:
+            await client.close()
+
+    async def test_csp_allows_explicitly_trusted_origins(self):
+        from unittest.mock import patch
+        origin = 'http://127.0.0.1:8788'
+        with patch.dict('os.environ', {'AIHUB_CLIENT_ORIGINS': origin}):
+            app = create_client_app(self.hub)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            response = await client.get('/client/v1/recordings', headers={**self.auth(), 'Origin': origin})
+            self.assertEqual(response.status, 200)
+            csp = response.headers.get('Content-Security-Policy', '')
+            self.assertIn(origin, csp)
+            self.assertIn('ws://127.0.0.1:8788', csp)
         finally:
             await client.close()
 

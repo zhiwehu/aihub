@@ -126,6 +126,20 @@ def create_client_app(hub):
     allow_any_origin = '*' in allowed_origins
     def origin_allowed(origin):
         return bool(origin) and (allow_any_origin or origin in allowed_origins)
+    def connect_sources():
+        # The page may be served by this listener while the API lives on another
+        # origin (e.g. the LAN address). Cors alone is not enough: the page CSP
+        # below would still block fetch/WebSocket.
+        if allow_any_origin:
+            return "'self' http: https: ws: wss:"
+        parts = ["'self'"]
+        for origin in sorted(allowed_origins):
+            parts.append(origin)
+            for scheme, replacement in (('http://', 'ws://'), ('https://', 'wss://')):
+                if origin.startswith(scheme):
+                    parts.append(replacement + origin[len(scheme):])
+                    break
+        return ' '.join(parts)
     @web.middleware
     async def guard(request, handler):
         origin = request.headers.get('Origin')
@@ -152,7 +166,7 @@ def create_client_app(hub):
         response.headers.update({
             'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
             'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+            'Content-Security-Policy': f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src {connect_sources()}; media-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
         if origin_allowed(origin):
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Vary'] = 'Origin'
