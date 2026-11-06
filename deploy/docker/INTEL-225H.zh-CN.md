@@ -5,14 +5,17 @@ LLM / ASR / TTS 用机器上已有的 HTTP 服务，本文不装模型。
 
 | 容器 | 作用 | 端口 |
 | --- | --- | --- |
-| core | 管理端、网页客户端入口、ESP32 网关 | 127.0.0.1:8765 / 0.0.0.0:8768 / 0.0.0.0:8766 |
+| core | 管理端、网页客户端接口、ESP32 网关 | 127.0.0.1:8765 / 0.0.0.0:8768 / 0.0.0.0:8766 |
 | processing | 后处理、转写、纪要 | 127.0.0.1:8790 |
+
+网页客户端页面不在本机部署：它在 `aihub-client-web` 仓库构建后由你另找地方托管，
+服务端只暴露 8768 的接口。
 
 ## 1. 准备
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git curl ca-certificates nodejs python3 python3-venv
+sudo apt-get install -y git curl ca-certificates python3 python3-venv
 ```
 
 按 [Ubuntu](https://docs.docker.com/engine/install/ubuntu/) 或
@@ -22,15 +25,10 @@ Compose 插件，然后：
 ```bash
 mkdir -p "$HOME/aihub-src" && cd "$HOME/aihub-src"
 git clone https://github.com/zhiwehu/aihub.git
-git clone https://github.com/zhiwehu/aihub-client-web.git
 cd aihub && ./scripts/install.sh --dev
-cd ../aihub-client-web && node scripts/build.mjs
-cd ../aihub
-.venv/bin/python scripts/install-client.py ../aihub-client-web/dist
 ```
 
 HTTPS 不通时改用 `git@github.com:` 地址，并先配置好 SSH Key。
-页面地址：`http://<服务器IP>:8768/demo/`。
 
 ## 2. 构建镜像
 
@@ -42,7 +40,7 @@ curl -fL --retry 3 \
   https://raw.githubusercontent.com/SYSTRAN/faster-whisper/master/faster_whisper/assets/silero_vad_v6.onnx \
   -o "$HOME/aihub-deploy/models/silero_vad_v6.onnx"
 VOICE_VAD_MODEL="$HOME/aihub-deploy/models/silero_vad_v6.onnx" \
-  ./deploy/docker/prepare-context.sh
+  ./deploy/docker/prepare-context.sh --no-client
 docker build -t aihub-core:225h-20261106 deploy/docker/context
 ```
 
@@ -83,6 +81,8 @@ lines = {
     'ASR_MODEL': 'REPLACE_WITH_ACTUAL_ASR_ID',
     'LLM_URL': 'http://127.0.0.1:8782/v1',
     'LLM_MODEL': 'REPLACE_WITH_ACTUAL_LLM_ID',
+    'CLIENT_ORIGINS': 'http://192.168.1.20:8788',
+    'CLIENT_PUBLIC_URL': 'http://192.168.1.20:8788/demo/',
 }
 fd = os.open('.env', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, 'w') as f:
@@ -94,6 +94,10 @@ nano .env
 
 `ASR_*`/`LLM_*` 只给后处理容器用（它的环境变量来自 Compose）。不需要鉴权时可以删掉
 Compose 里的 `env_file: [model-keys.env]`，跳过下面的 Key 文件。
+
+`CLIENT_ORIGINS` 是网页客户端页面的 origin（协议 + 主机 + 端口，多个用逗号分隔），
+`CLIENT_PUBLIC_URL` 是页面完整地址；两者都不是服务器 IP，示例里的
+`192.168.1.20:8788` 换成页面实际地址。
 
 TTS 不用配环境变量。首次启动生成的 `settings.json` 除 VAD 外沿用默认值，其中 TTS 默认是
 macOS `say`，容器里用不了，所以只把这一项换成兼容 HTTP API；模型 ID、音色和采样率在
@@ -174,7 +178,8 @@ services:
     environment:
       AIHUB_MODELS_URL: http://127.0.0.1:8790
       AIHUB_MODELS_TOKEN: ${AIHUB_MODELS_TOKEN:?set in .env}
-      AIHUB_CLIENT_ORIGINS: http://127.0.0.1:8768,http://localhost:8768
+      AIHUB_CLIENT_ORIGINS: ${CLIENT_ORIGINS:?set client page origin}
+      AIHUB_CLIENT_PUBLIC_URL: ${CLIENT_PUBLIC_URL:?set client page URL}
     volumes:
       - ${AIHUB_DEPLOY}/data:/data
       - ${AIHUB_DEPLOY}/music:/music:ro
@@ -206,17 +211,21 @@ ssh -N -L 8765:127.0.0.1:8765 用户名@服务器局域网IP
 
 ## 6. 网页客户端
 
-页面已由 8768 提供，局域网任意电脑打开 `http://<服务器IP>:8768/demo/`，
-「服务地址」保留页面默认值。
-
-登录管理端（经上面的 SSH 转发打开 `http://127.0.0.1:8765`）需要管理员令牌：
+页面在 [`aihub-client-web`](https://github.com/zhiwehu/aihub-client-web) 构建，
+放到任意静态主机（保持 `/demo/assets/` 路径）。页面地址写进第 3 节的
+`CLIENT_ORIGINS`/`CLIENT_PUBLIC_URL` 后执行：
 
 ```bash
-docker compose exec core python -m aihub_server --data /data --print-admin-token
+cd "$HOME/aihub-deploy" && docker compose up -d --force-recreate core
 ```
 
-登录后在「模型」页填 ASR/LLM/TTS 实际模型 ID、音色和采样率；在「客户端接入」生成
-连接码，填进客户端页面。
+登录管理端（经上面的 SSH 转发打开 `http://127.0.0.1:8765`），在「客户端接入」生成
+连接码。客户端页面里填：
+
+- 服务地址：`http://<服务器IP>:8768`
+- 连接码：刚生成的那串
+
+页面用 localhost 打开才能用麦克风；局域网 HTTP 页面要 HTTPS 才行。
 
 ## 7. ESP32
 
