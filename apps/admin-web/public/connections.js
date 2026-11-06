@@ -24,14 +24,32 @@ async function request(path='', options={}) {
   return value;
 }
 function link(text, href) { const a=el('a',text,'secondary connection-link'); a.href=href; if(href.startsWith('https:')) {a.target='_blank';a.rel='noopener noreferrer';}return a; }
+const ICONS = {
+  web: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  'echoear-s3': '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/></svg>',
+  ios: '<svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+};
+function deviceIcon(id) {
+  const icon = document.createElement('span');
+  icon.className = 'device-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = ICONS[id] || ICONS.web;
+  return icon;
+}
 function drawCatalog() {
   const target=$('client-catalog'); target.replaceChildren();
-  for(const client of data.clients) {
-    const card=el('article',undefined,'panel client-choice');
-    card.append(el('span',client.verified,'tag'),el('h2',client.name),el('p',client.id==='web'?'适合先体验聊天，也支持耳机麦克风。':'适合已经拥有这款猫头设备的用户。','hint'));
-    const choose=el('button',selected===client.id?'已选择':'选择此客户端',selected===client.id?'primary':'secondary');
+  const clients=[...data.clients,{id:'ios',name:'iOS App',verified:'即将支持',placeholder:true}];
+  for(const client of clients) {
+    const card=el('article',undefined,'panel client-choice device-choice');
+    card.append(deviceIcon(client.id));
+    card.append(el('span',client.verified,'tag'),el('h2',client.name),
+      el('p',client.id==='web'?'电脑浏览器直接用，支持耳机麦克风。':
+          client.id==='ios'?'手机端客户端还在开发中。':'喵伴 / ESP32 硬件设备。','hint'));
+    const choose=el('button',client.placeholder?'即将支持':selected===client.id?'已选择':'选择此设备',
+                    client.placeholder?'secondary':selected===client.id?'primary':'secondary');
     choose.type='button'; choose.setAttribute('aria-pressed',String(selected===client.id));
-    choose.onclick=()=>{selected=client.id;drawCatalog();drawGuide();};
+    if(client.placeholder)choose.disabled=true;
+    else choose.onclick=()=>{selected=client.id;drawCatalog();drawGuide();};
     card.append(choose);target.append(card);
   }
 }
@@ -48,10 +66,16 @@ function loadFlasher() {
     .then(()=>{if(selected==='echoear-s3')drawGuide();});
 }
 function drawGuide() {
-  const client=data.clients.find(c=>c.id===selected) || data.clients[0];
+  const client=data.clients.find(c=>c.id===selected);
+  const webPanel=$('device-panel-web'), iosPanel=$('device-panel-ios');
+  const guide=$('device-guide'), installer=$('echoear-installer');
+  if(webPanel)webPanel.hidden=selected!=='web';
+  if(iosPanel)iosPanel.hidden=selected!=='ios';
+  if(selected==='ios'){ if(guide)guide.hidden=true; if(installer)installer.hidden=true; return; }
+  if(!client)return;
   const echoear=client.id==='echoear-s3';
   if(echoear&&flasher==='idle')loadFlasher();
-  const installer=$('echoear-installer'),advanced=$('connection-advanced');
+  const advanced=$('connection-advanced');
   const usbPanel=!!installer&&echoear&&flasher==='ready';
   if(installer){
     installer.hidden=!usbPanel;
@@ -60,39 +84,37 @@ function drawGuide() {
     if(usbPanel&&usbAdvanced){if(advanced.parentElement!==usbAdvanced)usbAdvanced.append(advanced);}
     else if(home&&advanced.previousElementSibling!==home)home.after(advanced);
   }
-  $('client-guide-title').closest('article').hidden=usbPanel||client.id==='web';
+  guide.hidden=usbPanel||client.id==='web';
+  if(client.id==='web')return;
   window.dispatchEvent(new CustomEvent('aihub:firmware',{detail:client.firmware}));
-  $('client-guide-title').textContent='2. '+(client.id==='web'?'打开网页，开始使用':'准备设备并连接');
-  $('client-guide-status').textContent=client.id==='web'?'无需安装':'请先确认设备型号';
+  $('client-guide-title').textContent=client.name+' 接入步骤';
+  $('client-guide-status').textContent='请先确认设备型号';
   $('client-guide-hardware').textContent=client.hardware;
   const steps=$('client-guide-steps');steps.replaceChildren();
   for(const text of client.steps)steps.append(el('li',text));
   $('client-install-note').textContent=client.installation;
   const actions=$('client-install-actions');actions.replaceChildren();
-  if(client.id==='web') {const start=el('button','回到上方连接步骤','secondary');start.type='button';start.onclick=()=>document.getElementById('web-access-guide').scrollIntoView({behavior:'smooth'});actions.append(start);}
-  else {
-    if(echoear&&flasher==='missing')actions.append(el('p','USB 连接与配网助手没有加载：服务端在 /firmware 下没找到 aihub-firmware 的 flash 目录。可以先下载连接配置手动配网，或让管理员设置 AIHUB_FIRMWARE_ROOT 后重启服务端。','hint'));
-    if(client.firmware) {
-      if(client.firmware.install?.validated!==false)actions.append(link('下载应用固件 '+client.firmware.version,client.firmware.download));
-      else actions.append(el('p','新版应用已构建，正在等待实机验收。通过验收后，这里会开放安装。','hint'));
-      const checksum=el('details');checksum.append(el('summary','查看固件校验信息'),el('small','SHA256 '+client.firmware.sha256,'mono'));actions.append(checksum);
-    } else actions.append(el('p','这台服务器还没有提供固件安装包，请联系管理员准备。设备已经安装适配固件的，可以继续配置连接。','hint'));
-    const install=el('details',undefined,'connection-install-details');install.append(el('summary','安装说明与其他连接方式'));
-    if(client.source_url) install.append(link('查看固件源码',client.source_url));
-    if(client.build_url) install.append(link('查看安装与构建说明',client.build_url));
-    if(client.firmware?.install?.validated===false)install.append(link('下载候选固件（管理员测试）',client.firmware.download));
-    actions.append(install);
-    if(data.websocket.device_ready) {
-      install.append(el('p','设备连接地址：ws://'+data.websocket.device_host+':'+data.websocket.device_port+'/xiaozhi/v1/','hint'));
-      actions.append(link('下载推荐的设备连接设置','/api/clients/echoear-s3/connection?protocol=xiaozhi_websocket'));
-      for(const [device, enabled] of Object.entries(data.mqtt.config?.devices || {})) {
-        if(enabled && data.mqtt.state === 'running')install.append(link('下载 '+device+' 的 MQTT 配网配置','/api/clients/echoear-s3/connection?protocol=mqtt_udp&device='+encodeURIComponent(device)));
-      }
-      actions.append(el('p','下载的连接配置包含设备访问凭据，请仅交给对应设备使用。按固件说明填入地址与令牌，下载不会自动改写设备。','hint'));
-    } else {
-      actions.append(el('p',flasher==='missing'?'设备监听还没启动，开关在下方高级连接设置里；USB 配网助手不可用时也可以下载连接配置手动填写。':'下方 USB 向导会自动准备设备连接服务，无需手动填写地址。','hint'));
-      const setup=el('button','打开高级连接设置','secondary');setup.type='button';setup.onclick=()=>{$('connection-advanced').open=true;$('connection-advanced').scrollIntoView({behavior:'smooth',block:'start'});};actions.append(setup);
+  if(echoear&&flasher==='missing')actions.append(el('p','USB 连接与配网助手没有加载：服务端在 /firmware 下没找到 aihub-firmware 的 flash 目录。可以先下载连接配置手动配网，或让管理员设置 AIHUB_FIRMWARE_ROOT 后重启服务端。','hint'));
+  if(client.firmware) {
+    if(client.firmware.install?.validated!==false)actions.append(link('下载应用固件 '+client.firmware.version,client.firmware.download));
+    else actions.append(el('p','新版应用已构建，正在等待实机验收。通过验收后，这里会开放安装。','hint'));
+    const checksum=el('details');checksum.append(el('summary','查看固件校验信息'),el('small','SHA256 '+client.firmware.sha256,'mono'));actions.append(checksum);
+  } else actions.append(el('p','这台服务器还没有提供固件安装包，请联系管理员准备。设备已经安装适配固件的，可以继续配置连接。','hint'));
+  const install=el('details',undefined,'connection-install-details');install.append(el('summary','安装说明与其他连接方式'));
+  if(client.source_url) install.append(link('查看固件源码',client.source_url));
+  if(client.build_url) install.append(link('查看安装与构建说明',client.build_url));
+  if(client.firmware?.install?.validated===false)install.append(link('下载候选固件（管理员测试）',client.firmware.download));
+  actions.append(install);
+  if(data.websocket.device_ready) {
+    install.append(el('p','设备连接地址：ws://'+data.websocket.device_host+':'+data.websocket.device_port+'/xiaozhi/v1/','hint'));
+    actions.append(link('下载推荐的设备连接设置','/api/clients/echoear-s3/connection?protocol=xiaozhi_websocket'));
+    for(const [device, enabled] of Object.entries(data.mqtt.config?.devices || {})) {
+      if(enabled && data.mqtt.state === 'running')install.append(link('下载 '+device+' 的 MQTT 配网配置','/api/clients/echoear-s3/connection?protocol=mqtt_udp&device='+encodeURIComponent(device)));
     }
+    actions.append(el('p','下载的连接配置包含设备访问凭据，请仅交给对应设备使用。按固件说明填入地址与令牌，下载不会自动改写设备。','hint'));
+  } else {
+    actions.append(el('p',flasher==='missing'?'设备监听还没启动，开关在下方高级设置里；USB 配网助手不可用时也可以下载连接配置手动填写。':'下方 USB 向导会自动准备设备连接服务，无需手动填写地址。','hint'));
+    const setup=el('button','打开高级设置','secondary');setup.type='button';setup.onclick=()=>{$('connection-advanced').open=true;$('connection-advanced').scrollIntoView({behavior:'smooth',block:'start'});};actions.append(setup);
   }
 }
 function sessionButtons(item) {

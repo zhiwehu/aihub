@@ -24,8 +24,10 @@ test('first-time guide uses a default name, copies code and opens the configured
   await ui.nodes.get('client-access-form').onsubmit({preventDefault(){}});
   const created=ui.requests.find(r=>r.method==='POST');
   assert.equal(JSON.parse(created.body).name,'这台电脑的网页');
-  await ui.nodes.get('client-access-copy').onclick();
+  // generating the code copies it to the clipboard without another click
   assert.deepEqual(ui.copied,['a-test-connection-secret']);
+  await ui.nodes.get('client-access-copy').onclick();
+  assert.deepEqual(ui.copied,['a-test-connection-secret','a-test-connection-secret']);
   assert.equal(ui.nodes.get('client-access-open').href,'http://127.0.0.1:19768/demo/');
   assert.ok(!ui.nodes.get('client-access-open').href.includes('secret'));
   assert.equal(ui.nodes.get('client-access-secret').hidden,false);

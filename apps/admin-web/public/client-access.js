@@ -31,21 +31,27 @@ $('client-access-form').onsubmit=async event=>{
   try{
     const data=await api('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('client-access-name').value.trim()||'这台电脑的网页'})});
     $('client-access-token').value=data.token;$('client-access-secret').hidden=false;$('client-access-copy').disabled=false;
-    message('连接码已生成。下一步：复制连接码，再打开聊天网页。');await refresh();
-  }catch(e){message(e.message);}finally{button.disabled=false;button.textContent='生成连接码';}
+    const copied=await copyToken();
+    message(copied?'连接码已生成并复制。打开聊天网页，粘贴即可。':'连接码已生成，请点“复制连接码”。');
+    await refresh();
+  }catch(e){message(e.message);}finally{button.disabled=false;button.textContent='生成并复制连接码';}
 };
-$('client-access-copy').onclick=async()=>{
-  const value=$('client-access-token').value;if(!value)return;
-  if(window.isSecureContext&&navigator.clipboard?.writeText){
-    try{await navigator.clipboard.writeText(value);message('已复制。打开聊天网页后，粘贴到“连接码”一栏即可。');return;}catch{}
+async function copyToken(){
+  const value=$('client-access-token').value;if(!value)return false;
+  if(navigator.clipboard?.writeText){
+    try{await navigator.clipboard.writeText(value);return true;}catch{}
   }
-  // HTTP on a LAN address has no Clipboard API; select the value and use the
-  // legacy command, leaving it visible when even that is blocked.
+  // HTTP on a LAN address has no usable Clipboard API; select the value and use
+  // the legacy command, leaving it visible when even that is blocked.
   const input=$('client-access-token'),type=input.type;
   input.type='text';input.focus();input.select();
   let copied=false;try{copied=document.execCommand('copy');}catch{}
-  if(copied){input.type=type;message('已复制。打开聊天网页后，粘贴到“连接码”一栏即可。');}
-  else message('无法自动复制，连接码已显示并选中，请按 Ctrl+C（Mac 用 Cmd+C）。');
+  if(copied)input.type=type;
+  return copied;
+}
+$('client-access-copy').onclick=async()=>{
+  const copied=await copyToken();
+  message(copied?'已复制。打开聊天网页后，粘贴到“连接码”一栏即可。':'无法自动复制，连接码已显示并选中，请按 Ctrl+C（Mac 用 Cmd+C）。');
 };
 $('client-access-refresh').onclick=()=>refresh().catch(e=>message(e.message));
 const deviceApi=(path,options)=>api(path,options,'/api/device-credentials');

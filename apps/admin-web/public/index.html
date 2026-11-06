@@ -178,27 +178,28 @@
           </div>
         </section>
         <section data-panel="connections" hidden>
-          <article class="panel access-guide" id="web-access-guide">
-            <div class="section-heading"><h2>在网页里聊天</h2><span class="tag">首次使用，连接一次即可</span></div>
-            <p class="hint">按下面两步开始。已经连接的网页不用重复设置。</p>
-            <ol class="access-steps">
-              <li><h3>生成连接码</h3><p>连接码是这个网页的专用钥匙，用来保护你的对话和录音。</p>
-                <form id="client-access-form"><label>给网页起个名字（可不填）<input id="client-access-name" maxlength="80" autocomplete="off" placeholder="例如：我的电脑"></label><button id="client-access-create" class="primary">生成连接码</button></form>
-              </li>
-              <li><h3>复制后，打开聊天网页</h3><p>在聊天网页粘贴连接码，点击“连接”，就能开始对话或录音。</p>
-                <label id="client-access-secret" hidden>你的连接码<input id="client-access-token" readonly type="password" autocomplete="off"></label>
-                <div class="button-row"><button id="client-access-copy" class="secondary" disabled>复制连接码</button><a id="client-access-open" class="access-open" target="_blank" rel="noopener noreferrer" aria-disabled="true">打开聊天网页 ↗</a></div>
-                <p class="hint">连接码只显示这一次，请妥善保存，不要发给别人。</p>
-              </li>
-            </ol>
+          <div class="section-intro"><p>先选设备，再按提示完成接入。网页版会直接生成并复制连接码。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
+          <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
+          <h2 class="onboarding-section-title">选择设备</h2>
+          <div id="client-catalog" class="connection-grid"></div>
+
+          <article class="panel access-guide device-setup" id="device-panel-web" hidden>
+            <div class="section-heading"><h2>连接这个网页</h2><span class="tag">点一下生成并复制连接码</span></div>
+            <p class="hint">连接码是这个网页的专用钥匙。生成后会自动复制到剪贴板，打开聊天网页粘贴即可。</p>
+            <form id="client-access-form" class="device-form">
+              <details class="access-name"><summary>给这个网页起个名字（可选）</summary>
+                <input id="client-access-name" maxlength="80" autocomplete="off" placeholder="例如：我的电脑">
+              </details>
+              <button id="client-access-create" class="primary">生成并复制连接码</button>
+            </form>
+            <label id="client-access-secret" hidden>你的连接码<input id="client-access-token" readonly type="password" autocomplete="off"></label>
+            <div class="button-row"><button id="client-access-copy" class="secondary" disabled>复制连接码</button><a id="client-access-open" class="access-open" target="_blank" rel="noopener noreferrer" aria-disabled="true">打开聊天网页 ↗</a></div>
+            <p class="hint">连接码只显示这一次，请妥善保存，不要发给别人。</p>
             <p id="client-access-result" class="hint" role="status" aria-live="polite"></p>
             <details class="access-manage"><summary>管理已添加的网页</summary><p class="hint">取消连接权限会断开这个网页，但不会删除已有记录。</p><button id="client-access-refresh" type="button" class="text-button">刷新列表</button><div id="client-access-list"></div></details>
           </article>
-          
-          <div class="section-intro"><p>选好客户端，按步骤连上 VoiceHub，就可以开始聊天。</p><button class="secondary" id="connections-refresh">刷新状态</button></div>
-          <p id="connections-notice" class="hint" role="status">正在读取连接状态…</p>
-          <h2 class="onboarding-section-title">选择设备</h2><div id="client-catalog" class="connection-grid"></div>
-          <article class="panel onboarding-guide"><div class="section-heading"><h2 id="client-guide-title">接入向导</h2><span id="client-guide-status" class="tag"></span></div><p id="client-guide-hardware" class="hint"></p><ol id="client-guide-steps"></ol><p id="client-install-note" class="hint"></p><div id="client-install-actions" class="button-row"></div></article>
+
+          <article class="panel onboarding-guide" id="device-guide"><div class="section-heading"><h2 id="client-guide-title">接入向导</h2><span id="client-guide-status" class="tag"></span></div><p id="client-guide-hardware" class="hint"></p><ol id="client-guide-steps"></ol><p id="client-install-note" class="hint"></p><div id="client-install-actions" class="button-row"></div></article>
           <article id="echoear-installer" class="panel onboarding-guide" hidden>
             <h2>连接喵伴</h2>
             <ol class="usb-steps" aria-label="连接步骤"><li data-usb-step="1" aria-current="step"><b>1</b><span>连接设备</span></li><li data-usb-step="2"><b>2</b><span>配网</span></li><li data-usb-step="3"><b>3</b><span>开始对话</span></li></ol>
@@ -226,6 +227,12 @@
               <h3>其他配网方式</h3><button type="button" class="secondary" id="echoear-copy-setup">复制 VoiceHub 连接入口</button><p id="echoear-setup-status" class="hint" role="status">供设备热点配网页使用。</p>
             </details>
           </article>
+
+          <article class="panel device-setup" id="device-panel-ios" hidden>
+            <div class="section-heading"><h2>iOS App</h2><span class="tag">即将支持</span></div>
+            <p class="hint">手机端客户端还在开发中；现在可以先用网页版，体验一致。</p>
+          </article>
+
           <article class="panel onboarding-guide"><div class="section-heading"><h2>已连接设备</h2><span id="connections-online-count" class="tag">0 在线</span></div><div id="connections-devices"></div></article>
           <div id="connection-advanced-home" hidden></div>
         <details id="connection-advanced" class="onboarding-guide"><summary>高级设置 <small>设备接入调试用，日常连接喵伴不需要打开</small></summary>
