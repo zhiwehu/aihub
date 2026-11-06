@@ -138,13 +138,25 @@ def create_worker_app(kind, model, service_id, token, engine=None):
     async def chat(request):
         data = await request.json()
         if not isinstance(data, dict): raise ValueError('invalid_chat')
-        messages, limit = data['messages'], data['max_tokens']
-        if (data.get('model') != model or data.get('stream') is not True or
+        messages, limit = data.get('messages'), data.get('max_tokens')
+        if (data.get('model') != model or
                 type(limit) is not int or not 16 <= limit <= 2048 or
                 not isinstance(messages, list) or not 1 <= len(messages) <= 200 or
                 any(not isinstance(m, dict) or m.get('role') not in ('system','user','assistant') or
                     not isinstance(m.get('content'), str) or len(m['content']) > 16000 for m in messages)):
             raise ValueError('invalid_chat')
+        # OpenAI clients may ask for a buffered answer (stream=false/absent). The
+        # minutes engine does, and a 400 here used to abort every extraction.
+        if data.get('stream') is not True:
+            pieces = []
+            try:
+                async with asyncio.timeout(90), contextlib.aclosing(engine.chat(messages, limit)) as source:
+                    async for text in source:
+                        pieces.append(text)
+            except ProviderError as exc:
+                return web.json_response({'error': {'code': exc.code}}, status=502)
+            return web.json_response({'model': model, 'choices': [{'message': {
+                'role': 'assistant', 'content': ''.join(pieces)}}]})
         response = web.StreamResponse(headers={'Content-Type':'text/event-stream'})
         async with asyncio.timeout(90), contextlib.aclosing(engine.chat(messages, limit)) as source:
             prepared = False

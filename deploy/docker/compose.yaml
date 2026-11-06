@@ -29,6 +29,9 @@ services:
     env_file:
       - env/models.env
     environment:
+      # Minute documents are rendered inside the container; without a timezone
+      # they show UTC. Override with TZ in .env when the host is elsewhere.
+      TZ: "${TZ:-Asia/Shanghai}"
       AIHUB_WEB_ROOT: /app/web
       AIHUB_CLIENT_ROOT: /app/client-web
       AIHUB_CLIENT_PUBLIC_PORT: "${AIHUB_CLIENT_PORT:-8768}"
@@ -108,6 +111,7 @@ services:
       AIHUB_MODELS_ALLOW_REMOTE: "1"
       # Minutes / retranscription / diarisation use HTTP model services. Point
       # them at the same endpoints the console uses; keys come from env_file.
+      TZ: "${TZ:-Asia/Shanghai}"
       AIHUB_MINUTES_PROVIDER: http
       AIHUB_MINUTES_URL: "${LLM_URL:?set LLM_URL in .env}"
       AIHUB_MINUTES_MODEL: "${LLM_MODEL:?set LLM_MODEL in .env}"
