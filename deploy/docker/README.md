@@ -3,9 +3,10 @@
 For a Linux x86_64 CPU setup reusing existing HTTP model services, with core and processing containers, see the
 [Intel Core Ultra 5 225H guide (中文)](INTEL-225H.zh-CN.md). That guide deploys
 the server only: the web client is built and released from its own repository, so
-`prepare-context.sh --no-client` and `aihub-server --no-client` are used. It also
-uses a separate Linux host-network Compose example; do not combine its networking
-with the bridge-network deployment below.
+the image is prepared with `prepare-context.sh --no-client` while the server still
+runs its client listener for that external page. It also uses a separate Linux
+host-network Compose example; do not combine its networking with the bridge-network
+deployment below.
 
 This image contains core common/tools/server packages and the included management
 console. Processing and inference remain separate services; Linux external HTTP
