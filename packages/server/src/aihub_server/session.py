@@ -3,6 +3,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import os
 import re
 import ipaddress
@@ -30,6 +31,10 @@ class Turn:
     audio_started: bool = False
     system: bool = False  # recording prompts are never journalled as a reply
     started: float = field(default_factory=time.monotonic)
+    user_at: float | None = None
+    first_text_at: float | None = None
+    first_audio_at: float | None = None
+    audio_end_at: float | None = None
 
 
 # 单轮播报的硬上限（秒）。它只用来拦住失控的合成，正常的长故事不能被截断：
@@ -91,6 +96,14 @@ class Session:
     async def emit(self, kind, turn=None, **data):
         if self.closed or (turn and (turn.cancelled or self.turn is not turn)):
             return
+        now = time.monotonic()
+        if turn is not None:
+            if kind == 'reply.delta' and turn.first_text_at is None:
+                turn.first_text_at = now
+            elif kind == 'audio.start' and turn.first_audio_at is None:
+                turn.first_audio_at = now
+            elif kind == 'audio.end':
+                turn.audio_end_at = now
         self.seq += 1
         media_turn_id=data.pop('media_turn_id',None)
         event = dict(type=kind, session_id=self.id, turn_id=turn.id if turn else media_turn_id,
@@ -738,6 +751,7 @@ class Session:
                                     elapsed_ms=round((time.monotonic()-turn.started)*1000))
                 if announcement is None:
                     self.store.message(self.id, turn.id, 'user', text, 'confirmed')
+                    turn.user_at = time.monotonic()
                     await self.emit('message.user', turn, text=text)
                 compact=re.sub(r'[\s，。！？,.!?]','',text)
                 if announcement is None and re.fullmatch(r'(?:请|那|好|嗯)?(?:先)?(?:不用说了|别说了|不要说了|不用念了|别念了|不要念了|停止播报|停止说话|停止朗读)',compact):
@@ -922,8 +936,20 @@ class Session:
                         await self.emit('playback.unconfirmed', turn)
                 self.record_reply(turn, status)
                 if not turn.system:
-                    await self.emit('turn.completed', turn, delivery=status,
-                                    elapsed_ms=round((time.monotonic()-turn.started)*1000))
+                    now = time.monotonic()
+                    def span(start, end):
+                        return round((end-start)*1000) if start is not None and end is not None else None
+                    timing = dict(
+                        asr_ms=span(turn.started, turn.user_at),
+                        llm_first_ms=span(turn.user_at, turn.first_text_at),
+                        tts_first_ms=span(turn.first_text_at, turn.first_audio_at),
+                        audio_ms=span(turn.first_audio_at, turn.audio_end_at),
+                        elapsed_ms=span(turn.started, now))
+                    logging.getLogger(__name__).info(
+                        'turn timing id=%s asr=%sms llm_first=%sms tts_first=%sms audio=%sms total=%sms',
+                        turn.id[:8], timing['asr_ms'], timing['llm_first_ms'],
+                        timing['tts_first_ms'], timing['audio_ms'], timing['elapsed_ms'])
+                    await self.emit('turn.completed', turn, delivery=status, **timing)
         except asyncio.CancelledError:
             self.record_reply(turn, 'interrupted')
         except Exception as exc:
