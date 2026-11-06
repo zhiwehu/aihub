@@ -61,10 +61,10 @@ def _serve(args):
                           minutes_model=False if args.no_minutes else args.minutes_model)
     allow_remote = env_value('MODELS_ALLOW_REMOTE') in ('1', 'true', 'yes')
     app = create_service_app(jobs, minutes, token, allow_remote=allow_remote)
-    print(f'aihub-models service: http://127.0.0.1:{args.port} (recordings {recordings_root})')
+    print(f'aihub-models service: http://{args.host}:{args.port} (recordings {recordings_root})')
     if args.print_token:
         print(token)
-    web.run_app(app, host='127.0.0.1', port=args.port,
+    web.run_app(app, host=args.host, port=args.port,
                 access_log=None, shutdown_timeout=5)
 
 
@@ -135,6 +135,8 @@ def build_parser():
     serve = sub.add_parser('serve', help='media jobs and meeting minutes')
     serve.add_argument('--data', required=True)
     serve.add_argument('--port', type=int, default=8790)
+    serve.add_argument('--host', default='127.0.0.1',
+                       help='listen address (0.0.0.0 inside a container network)')
     serve.add_argument('--token', help='bearer token (default: AIHUB_MODELS_TOKEN or random)')
     serve.add_argument('--print-token', action='store_true')
     serve.add_argument('--asr-model', help='ASR model id used for asr-mode re-diarization')

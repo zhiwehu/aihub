@@ -100,7 +100,12 @@ services:
     container_name: "${AIHUB_PROCESSING_CONTAINER:-aihub-processing}"
     env_file:
       - env/models.env
+    # Bind the container network, not loopback: core reaches it as
+    # http://processing:8790. The port is never published on the host and every
+    # request still needs the shared bearer token.
+    command: ["serve", "--data", "/data", "--port", "8790", "--host", "0.0.0.0"]
     environment:
+      AIHUB_MODELS_ALLOW_REMOTE: "1"
       # Minutes / retranscription / diarisation use HTTP model services. Point
       # them at the same endpoints the console uses; keys come from env_file.
       AIHUB_MINUTES_PROVIDER: http
