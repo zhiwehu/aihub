@@ -22,3 +22,8 @@ chat. Deploy with only the configured music directory mounted read-only; retain
 all unrelated config/data and never alter the frozen source repositories.
 
 Implementation and verification: docs/client-music.md.
+
+2026-11-06 optimization: directly route explicit music controls, implement ordered
+next/random selection, shorten control replies, and acknowledge web volume changes
+on the requesting socket. Resume music after a successful volume adjustment.
+These are routing and execution corrections; no REX fine-tuning is required.

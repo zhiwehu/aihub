@@ -441,6 +441,7 @@ async def device_gateway(request, ws):
             await ws.send_json({'session_id': sid, 'type': 'mcp', 'payload': payload})
 
         pipeline.device = DeviceMCP(device_mcp_send)
+        pipeline.client_type='web' if client_id else 'device'
         session = Session(sid, device, hub.store, pipeline, send, publish=hub.publish,
                           wake_mode=mode, wake_phrase=cfg['wake']['phrase'], playback_ack=not legacy,
                           idle_seconds=cfg['wake']['idle_seconds'], recording_manager=hub.recordings)
@@ -535,8 +536,13 @@ async def device_gateway(request, ws):
                         await session.stop_recording('client', speak=False)
                     await session.interrupt('standby')
                     await session.transition('standby')
+                elif kind=='music.volume.applied' and client_id and session.music:
+                    identity=value.get('request_id')
+                    if isinstance(identity,str) and len(identity)<=64:session.music.volume_applied(identity,value.get('volume'))
+                elif kind=='music.volume.set' and client_id and session.music:
+                    session.music.manual_volume(value.get('volume'))
                 elif kind == 'music.control':
-                    if not session.music or value.get('action') not in ('pause','resume','stop'):
+                    if not session.music or value.get('action') not in ('pause','resume','stop','next','random'):
                         raise ValueError('invalid_music_control')
                     await session.music.call(value['action'])
                 elif kind == 'playback.done':

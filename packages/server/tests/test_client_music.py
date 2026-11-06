@@ -115,6 +115,32 @@ class ClientMusicTests(IsolatedAsyncioTestCase):
         finally:await ops.close()
 
 
+    async def test_next_and_random_choose_another_track(self):
+        song(self.library/'second.wav');song(self.library/'third.wav')
+        first=await self.session.music.call('play')
+        following=await self.session.music.call('next')
+        self.assertNotEqual(first['track_id'],following['track_id'])
+        for _ in range(4):
+            random_track=await self.session.music.call('random')
+            self.assertNotEqual(following['track_id'],random_track['track_id']);following=random_track
+        await self.session.music.call('stop')
+
+    async def test_web_volume_waits_for_own_client_and_resumes_interrupted_music(self):
+        self.session.pipeline.client_type='web'
+        await self.session.music.call('play');await self.wait(lambda:self.session.music.playing)
+        await self.session.interrupt('new_input')
+        change=asyncio.create_task(self.session.music.volume_action({'action':'up'}))
+        await self.wait(lambda:any(e['type']=='music.volume' for e in self.events))
+        event=next(e for e in self.events if e['type']=='music.volume')
+        self.assertFalse(change.done());self.assertEqual(event['volume'],60)
+        self.assertFalse(self.second.music.volume_applied(event['request_id'],60))
+        self.assertTrue(self.session.music.volume_applied(event['request_id'],60))
+        result,sentence=await change
+        self.assertEqual(result['volume'],60);self.assertIn('60',sentence)
+        await self.wait(lambda:self.session.music.playing)
+        self.assertEqual(self.second.music.volume,50)
+
+
 class LegacyMusicTests(IsolatedAsyncioTestCase):
     async def test_device_ready_handshake_accepts_session_owned_music_and_receives_opus(self):
         from aiohttp import WSMsgType

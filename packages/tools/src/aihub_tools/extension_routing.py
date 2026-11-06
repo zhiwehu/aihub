@@ -6,13 +6,16 @@ import re
 from .tools import parse_plan
 
 
-def music_plan(text):
+def music_plan(text,active=False):
     text=text.strip().strip('，。？！,.?!').strip()
     text=re.sub(r'^(播放歌曲|播放音乐|播放|搜索歌曲|搜索音乐)\s+',r'\1',text)
     prefix=r'(?:(?:请|帮我|麻烦你)[\s，,]*)*'
-    controls={'暂停音乐':'pause','暂停播放':'pause','继续播放音乐':'resume','继续播放':'resume',
+    controls={'下一首':'next','换一首':'next','换首歌':'next','切歌':'next','下一首歌':'next','换一首音乐':'next','下一首音乐':'next',
+              '随机播放音乐':'random','随机播放歌曲':'random','随机放首歌':'random',
+              '暂停音乐':'pause','暂停播放':'pause','继续播放音乐':'resume','继续播放':'resume',
               '继续音乐':'resume','停止音乐':'stop','停止播放音乐':'stop','停止播放':'stop',
               '音乐播放状态':'status','现在播放什么音乐':'status'}
+    if active:controls.update({'暂停':'pause','继续':'resume','停止':'stop','随机播放':'random'})
     for phrase,action in controls.items():
         if re.fullmatch(prefix+phrase,text):return {'action':action}
     if re.fullmatch(prefix+r'(?:播放(?:一首|一些|点)?音乐|来(?:点|首)音乐|放(?:一首|点)?音乐)',text):return {'action':'play'}
@@ -152,7 +155,7 @@ def volume_command(text):
     if match:
         value=_volume_number(match.group(1))
         return {'action':'set','value':max(0,min(100,value))} if value is not None else {'action':'set'}
-    direction=r'(降低|提高|调低|调高|调小|调大|减小|增大|大|高|响|小|低|轻)'
+    direction=r'(降低|提高|调低|调高|调小|调大|减小|增大|加大|大|高|响|小|低|轻)'
     match=re.fullmatch(prefix+subject+r'(?:再)?(?:调|降|升|提)?'+direction+r'(?:一点|一些|点|些|一档|两档|一下|声)?',compact)
     if match:return {'action':'up' if any(mark in match.group(1) for mark in '大高响提增') else 'down'}
     match=re.fullmatch(prefix+r'(?:调|降|升|提)?'+direction+r'(?:一点|一些|点|些|一档|两档|一下)?(?:的)?'+subject,compact)

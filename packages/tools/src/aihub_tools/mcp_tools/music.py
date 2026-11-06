@@ -7,7 +7,7 @@ from ..music_player import MusicPlayer
 from ..settings import data_root, load_tool_settings
 
 SCHEMA=('搜索和播放管理员配置目录中的本地音乐，支持暂停、继续、停止和播放状态。声音输出到发起请求的网页或语音设备。',{
-    'action':{'type':'string','enum':['search','play','pause','resume','stop','status']},
+    'action':{'type':'string','enum':['search','play','next','random','pause','resume','stop','status']},
     'query':{'type':'string','maxLength':80,'description':'歌名关键词，可选；多首匹配时先让用户选择。'},
     'track_id':{'type':'string','maxLength':20,'description':'搜索返回的歌曲标识，可选。'}})
 REQUIRED=['action']
@@ -25,8 +25,9 @@ async def execute(http,action,query='',track_id=''):
 
 def spoken_summary(result):
     value=json.loads(result['content'][0]['text']);status=value.get('status');title=value.get('title','')
-    track='《'+title+'》' if title else '音乐'
-    if status=='queued':return '准备播放'+track+'。'
+    track='《'+title+'》' if title and len(title)<=24 else '音乐'
+    if status=='queued':
+        return {'resume':'继续播放。','next':'这就换下一首。','random':'这就随机放一首。'}.get(value.get('action'),'这就播放。')
     if status=='playing':return '正在播放'+track+'。'
     if status=='paused':return '已暂停'+track+'。'
     if status=='stopped':return '音乐已停止。'

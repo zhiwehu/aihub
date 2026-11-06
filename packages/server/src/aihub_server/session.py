@@ -664,7 +664,9 @@ class Session:
         await asyncio.gather(turn.task, return_exceptions=True)
 
     async def interrupt(self, reason='manual'):
-        if self.music and self.music.state in ('playing','queued'):await self.music.pause()
+        if self.music and self.music.state in ('playing','queued'):
+            self.music.resume_after_control=reason in ('speech','new_input')
+            await self.music.pause(reason=reason)
         turn = self.turn
         if turn and not turn.cancelled:
             if self.operations and turn.notification_id:

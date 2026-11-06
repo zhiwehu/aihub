@@ -3,7 +3,7 @@
 The music library stays on the server. Audio plays on the web client or voice
 device that requested it; no host speaker, afplay process, public audio URL or
 cross-session player is involved. The authenticated pipeline exposes only a
-ClientMusicControl.call interface to the tool layer.
+ClientMusicControl interface to the tool layer.
 
 ## Transport and controls
 
@@ -16,12 +16,18 @@ codec; physical hardware remains a separate acceptance test.
 
 music.state contains state (queued/playing/paused/stopped/failed), title, track_id
 and approximate position. No filesystem paths are exposed. The existing
-socket accepts music.control with pause/resume/stop; every control is scoped to
+socket accepts music.control with pause/resume/stop/next/random; every control is scoped to
 that socket's session. The web player adds independent music volume.
 
-Music waits for acknowledgement/result speech to finish. A new conversation,
+Explicit local music commands bypass model planning and emit one brief result instead
+of a preparation announcement followed by the full filename. Next follows library
+order; random avoids the current track when alternatives exist. Music waits for
+the brief result speech to finish. A new conversation,
 barge-in, another result announcement or recording pauses it. Resuming requires
-an explicit voice command or button. A disconnected client terminates its decoder
+an explicit voice command or button, except successful web volume controls resume
+music paused by that control. Web volume uses a request ID scoped to the socket
+and waits for client confirmation before reporting success; it never targets a robot.
+The slider synchronizes its value to the session on connect and change. A disconnected client terminates its decoder
 and does not resume automatically. Paused device sessions stay alive for resume.
 Corrupt audio produces a safe failure event and audible notification when the
 session has an operation queue; it never reports that sound was heard.
@@ -46,7 +52,7 @@ returns music_session_required, preventing accidental host-speaker fallback.
 
 ## Verification
 
-Core regression: common 54, processing 63, tools 90 + 15 subtests; server 330 +
+Core regression: common 54, processing 63, tools 93 + 26 subtests; server 332 +
 28 subtests with the one documented pre-existing wake-phrase failure unchanged.
 Root artifact integrity 1 and admin Node 14 passed. Client Node 10 passed.
 Music-specific checks cover real resampling/seeking, isolation, pause/resume,
@@ -54,3 +60,8 @@ corrupt input, cancellation during spawn, cleanup and a real legacy ready/Opus
 transport exchange. Browser playback of an existing library track reached playing;
 pause, resume, volume and stop worked without console errors. After stop there
 were zero decoder processes. The temporary test credential was revoked.
+
+2026-11-06 browser regression: ordered next changed the track; random selected
+a different track; “加大音量” changed the web slider from 50 to 60 and music
+returned to playing after its brief reply. Direct music commands produced one
+short response and a completed inline tool call, without model planning.

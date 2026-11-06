@@ -63,6 +63,7 @@ async def rex_plan(pipeline,history,cfg):
 
 
 _VOLUME_ERRORS = {
+    'client_volume_timeout':'网页还没确认音量变化，请重新连接后再试。',
     'device_unavailable': '现在没有连上喵伴，音量调不了。',
     'device_timeout': '喵伴没有响应，音量可能没变，等下再说一次。',
     'device_mcp_incompatible': '这台设备不支持调节音量。',
@@ -81,7 +82,9 @@ async def device_turn(pipeline, arguments):
     yield ToolStatus('device_volume', 'started', arguments=arguments, planner='device_rules')
     try:
         async with asyncio.timeout(8):
-            result, sentence = await device_volume.run(pipeline, arguments)
+            if getattr(pipeline,'client_type',None)=='web' and getattr(pipeline,'music',None):
+                result,sentence=await pipeline.music.volume_action(arguments)
+            else:result, sentence = await device_volume.run(pipeline, arguments)
     except (DeviceMCPError, TimeoutError) as exc:
         code = getattr(exc, 'code', 'device_timeout')
         yield ToolStatus('device_volume', 'failed', round((time.monotonic()-started)*1000), code)
@@ -93,6 +96,8 @@ async def device_turn(pipeline, arguments):
 
 async def chat(pipeline, history):
     latest=next((m.get('content','') for m in reversed(history) if m.get('role')=='user'),'')
+    player=getattr(pipeline,'music',None)
+    music_request=music_plan(latest,active=bool(getattr(player,'track',None) and getattr(player,'state',None) in ('playing','paused','queued')))
     if getattr(getattr(pipeline,'runtime',None),'skills',None) is None and re.search(r'(?:执行|运行|启动|调用)\s*(?:skill|技能)',latest,re.IGNORECASE):
         yield '技能功能已暂停。你可以直接查询天气、日程，或使用其他 MCP 工具。'
         return
@@ -134,7 +139,7 @@ async def chat(pipeline, history):
         from .slot_normalizer import normalize_spans
         cached_rex=normalize_spans('news','',[],cfg)
         pipeline._previous_tool_plan=cached_rex
-    if cached_rex is None and workflow is None and music_plan(latest) is None and files is None and not music_refusal(latest) and cfg.get('planner')=='rex' and any(cfg.get(k) for k in ('shopping_list','timer','item_memory')) and not is_conversational_turn(latest) and calendar_answer(latest) is None:
+    if cached_rex is None and workflow is None and music_request is None and files is None and not music_refusal(latest) and cfg.get('planner')=='rex' and any(cfg.get(k) for k in ('shopping_list','timer','item_memory')) and not is_conversational_turn(latest) and calendar_answer(latest) is None:
         if re.search(r'购物|采购|清单|计时|倒数|倒计时|放哪|位置|记住|物品|存放',latest):yield ToolNotice('tool_planning','')
         try:cached_rex=await rex_plan(pipeline,history,cfg)
         except (PlannerError,ValueError,TimeoutError):
@@ -178,7 +183,7 @@ async def chat(pipeline, history):
         pipeline._previous_tool_plan=None
         yield '文件整理还没开启，请在网页上设置允许整理的目录并启用。'
         return
-    if not cfg.get('music') and music_plan(latest) is not None:
+    if not cfg.get('music') and music_request is not None:
         pipeline._previous_tool_plan=None
         yield '本地音乐还没开启，请在网页上设置音乐目录并启用。'
         return
@@ -196,12 +201,12 @@ async def chat(pipeline, history):
                 yield text
         return
     # 口语天气已经在上面的快速通道里给过静默反馈，这里不再追加语音确认。
-    if cached_rex is None and getattr(local,'operations',None) and (files is not None or music_candidate(latest) or re.search(r'天气|气温|降雨|下雨|新闻|资讯|CPU|内存|磁盘|系统信息',latest,re.IGNORECASE) or (extra and re.search(r'调用|使用工具|执行工具',latest))):
+    if cached_rex is None and music_request is None and getattr(local,'operations',None) and (files is not None or music_candidate(latest) or re.search(r'天气|气温|降雨|下雨|新闻|资讯|CPU|内存|磁盘|系统信息',latest,re.IGNORECASE) or (extra and re.search(r'调用|使用工具|执行工具',latest))):
         # 这里只负责把本轮切到后台，具体说的是哪句话交给 phrasing：
         # 有后台进度就用进度里的口语，没有就用下面的工具确认。
         yield ToolNotice('tool_planning','')
     mode=cfg.get('planner','llm')
-    music=music_plan(latest) if cfg.get('music') else None
+    music=music_request if cfg.get('music') else None
     candidates=extra+[t for t in available if (t['name']=='music' and music_candidate(latest)) or (t['name']=='file_organizer' and file_candidate(latest))]
     dynamic_name=None;dynamic_arguments={}
     if mode=='rex' and candidates and music is None and files is None and not (match or news_match):
@@ -264,7 +269,7 @@ async def chat(pipeline, history):
             async for value in source:yield value
         return
     # The session drains this acknowledgement through TTS before resuming this generator.
-    yield ToolNotice(name, phrasing.acknowledge(name))
+    if name!='music':yield ToolNotice(name, phrasing.acknowledge(name))
     started = time.monotonic()
     yield ToolStatus(name, 'started', arguments=arguments, planner=mode)
     try:

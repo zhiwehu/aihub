@@ -22,6 +22,9 @@ __all__ = ["ToolPipeline", "ToolRuntime", "ClientMusicControl"]
 class ClientMusicControl(Protocol):
     """Playback actions target only the authenticated pipeline's own client."""
 
+    async def volume_action(self, arguments: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        ...
+
     async def call(self, action: str, query: str = '', track_id: str = '') -> dict[str, Any]:
         ...
 
