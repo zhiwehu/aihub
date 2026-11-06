@@ -28,8 +28,27 @@ services:
       AIHUB_CLIENT_ORIGINS: ${CLIENT_ORIGINS:-}
       AIHUB_CLIENT_PUBLIC_URL: ${CLIENT_PUBLIC_URL:-}
       AIHUB_LLM_THINKING: ${LLM_THINKING:-}
+      AIHUB_REX_RUNTIME: /data/rex-runtime-linux
     volumes:
       - ${AIHUB_DEPLOY}/data:/data
       - ${AIHUB_DEPLOY}/music:/music:ro
-    command: ["--data", "/data", "--host", "127.0.0.1", "--port", "8765",
+    command: ["--data", "/data", "--host", "0.0.0.0", "--port", "8765",
               "--client-host", "0.0.0.0", "--client-port", "8768"]
+
+  bridge:
+    image: aihub-core:@TAG@
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - ${AIHUB_DEPLOY}/bridge.py:/app/bridge.py:ro
+    environment:
+      TTS_MODE: ${TTS_MODE:-ws}
+      TTS_WS_URL: ${TTS_WS_URL:-ws://127.0.0.1:18093/api/v3/tts/bidirection}
+    entrypoint: ["python", "/app/bridge.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18095/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
