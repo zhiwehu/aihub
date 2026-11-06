@@ -35,8 +35,17 @@ $('client-access-form').onsubmit=async event=>{
   }catch(e){message(e.message);}finally{button.disabled=false;button.textContent='生成连接码';}
 };
 $('client-access-copy').onclick=async()=>{
-  try{await navigator.clipboard.writeText($('client-access-token').value);message('已复制。打开聊天网页后，粘贴到“连接码”一栏即可。');}
-  catch{$('client-access-token').focus();$('client-access-token').select();message('无法自动复制，请选中连接码后手动复制。');}
+  const value=$('client-access-token').value;if(!value)return;
+  if(window.isSecureContext&&navigator.clipboard?.writeText){
+    try{await navigator.clipboard.writeText(value);message('已复制。打开聊天网页后，粘贴到“连接码”一栏即可。');return;}catch{}
+  }
+  // HTTP on a LAN address has no Clipboard API; select the value and use the
+  // legacy command, leaving it visible when even that is blocked.
+  const input=$('client-access-token'),type=input.type;
+  input.type='text';input.focus();input.select();
+  let copied=false;try{copied=document.execCommand('copy');}catch{}
+  if(copied){input.type=type;message('已复制。打开聊天网页后，粘贴到“连接码”一栏即可。');}
+  else message('无法自动复制，连接码已显示并选中，请按 Ctrl+C（Mac 用 Cmd+C）。');
 };
 $('client-access-refresh').onclick=()=>refresh().catch(e=>message(e.message));
 const deviceApi=(path,options)=>api(path,options,'/api/device-credentials');

@@ -73,4 +73,6 @@ class SystemApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value['total'], 3)
         self.assertEqual(value['reachable'], 0)
         self.assertEqual(value['rss'], 0)
-        self.assertEqual(value['processes'], [])
+        self.assertEqual([row['kind'] for row in value['processes']], ['asr', 'llm', 'tts'])
+        self.assertTrue(all(not row['reachable'] and row['external'] is False for row in value['processes']))
+        self.assertEqual(value['planner'], 'llm')

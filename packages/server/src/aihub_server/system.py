@@ -15,6 +15,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import aiohttp
 import psutil
@@ -120,18 +121,43 @@ async def _probe(client, kind, url, headers):
             'ready': body.get('ready'), 'model': body.get('model')}
 
 
+def _external(url):
+    """True when the endpoint is not this host, so local RSS cannot apply."""
+    try:
+        host = urlsplit(url or '').hostname
+    except ValueError:
+        return True
+    return host not in (None, '127.0.0.1', 'localhost', '::1')
+
+
 async def model_tier(config, services, timeout=1.5):
-    """Add up what each model service reports about itself."""
+    """Report every configured model endpoint, even when it cannot be probed."""
     targets = _targets(config, services)
+    planner = (config.get('tools') or {}).get('planner', 'llm') if isinstance(config, dict) else 'llm'
     if not targets:
-        return {'total': 0, 'reachable': 0, 'rss': 0, 'cpu_percent': 0.0, 'processes': []}
+        return {'total': 0, 'reachable': 0, 'rss': 0, 'cpu_percent': 0.0,
+                'processes': [], 'planner': planner}
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as client:
         results = await asyncio.gather(*[_probe(client, *row) for row in targets])
-    rows = [row for row in results if row]
-    return {'total': len(targets), 'reachable': len(rows),
-            'rss': sum(row.get('rss') or 0 for row in rows),
-            'cpu_percent': round(sum(row.get('cpu_percent') or 0 for row in rows), 1),
-            'processes': rows}
+    rows, seen = [], set()
+    rss = cpu = 0
+    for (kind, url, _headers), result in zip(targets, results):
+        row = dict(result or {})
+        row.update(kind=kind, reachable=bool(result), external=_external(url))
+        rows.append(row)
+        if not result:
+            continue
+        pid = result.get('pid')
+        # ASR and TTS can share one native process; count its memory once.
+        if pid is not None and pid in seen:
+            continue
+        if pid is not None:
+            seen.add(pid)
+        rss += result.get('rss') or 0
+        cpu += result.get('cpu_percent') or 0
+    return {'total': len(targets), 'reachable': sum(1 for row in rows if row['reachable']),
+            'rss': rss, 'cpu_percent': round(cpu, 1), 'processes': rows,
+            'planner': planner}
 
 
 def _rates(net, now):

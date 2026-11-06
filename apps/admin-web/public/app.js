@@ -852,8 +852,23 @@ async function refreshSystem() {
   $("mem-detail").textContent =
     "服务进程 · 系统 " + s.memory.percent.toFixed(0) + "%（" +
     formatStorage(s.memory.used) + " / " + formatStorage(s.memory.total) + "）";
-  $("mem-breakdown").textContent = (tier.processes || []).length
-    ? tier.processes.map((p) => p.kind + " " + formatStorage(p.rss || 0)).join(" · ")
+  const modelGroups = new Map();
+  for (const p of tier.processes || []) {
+    const key = p.pid ? "pid:" + p.pid : "kind:" + p.kind;
+    if (!modelGroups.has(key)) modelGroups.set(key, { kinds: [], row: p });
+    else modelGroups.get(key).kinds.push(p.kind);
+  }
+  const modelRows = [...modelGroups.values()].map(({ kinds, row }) => {
+    const name = [row.kind, ...kinds].join("/");
+    let state;
+    if (!row.reachable) state = row.external ? "远程" : "未连接";
+    else if (row.rss) state = formatStorage(row.rss);
+    else state = row.external ? "远程" : "未上报";
+    return name + " " + state;
+  });
+  modelRows.push(tier.planner === "rex" ? "rex 已启用" : "rex 未启用");
+  $("mem-breakdown").textContent = modelGroups.size
+    ? modelRows.join(" · ")
     : "模型进程未上报（" + (tier.reachable || 0) + "/" + (tier.total || 0) + "）";
   $("disk-usage").textContent = formatStorage(s.disk.data_bytes);
   $("disk-detail").textContent =
