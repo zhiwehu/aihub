@@ -1,5 +1,10 @@
 # Core Docker deployment
 
+For a Linux x86_64 CPU setup including model and processing containers, see the
+[Intel Core Ultra 5 225H guide (中文)](INTEL-225H.zh-CN.md). It uses a separate
+Linux host-network Compose example; do not combine its networking with the
+bridge-network deployment below.
+
 This image contains core common/tools/server packages and the included management
 console. Processing and inference remain separate services; Linux external HTTP
 models do not require MLX. See ../linux/README.md for provider settings/systemd.

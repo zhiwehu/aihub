@@ -24,8 +24,10 @@ following creates a NEW settings file and refuses to overwrite an existing one:
   --tts-voice ACTUAL_VOICE --tts-sample-rate 24000
 ```
 
-These settings explicitly use HTTP, planner=llm and disable local music (afplay
-is macOS only). The backend expects LLM SSE `delta.content`, ASR multipart WAV with
+These settings explicitly use HTTP, planner=llm and initially disable local music.
+Enable music after configuring a readable library; containers require an explicit
+library mount (see the [Intel Docker guide](../docker/INTEL-225H.zh-CN.md)).
+The backend expects LLM SSE `delta.content`, ASR multipart WAV with
 JSON `text`, and TTS raw mono s16le PCM at the configured sample rate, not WAV/MP3.
 Configure non-thinking output in the LLM service. Use a thin adapter if your
 backend differs. Backend concurrency/scheduling must reserve capacity for chat

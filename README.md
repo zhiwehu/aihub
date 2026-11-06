@@ -61,3 +61,5 @@ reported as a nonzero result, never skipped to make the migration appear green.
 See [migration, history and rollout](docs/migration.md),
 [Linux HTTP deployment](deploy/linux/README.md), and
 [device credentials](docs/device-credentials.md).
+
+中文部署指南：[Intel Core Ultra 5 225H / Ubuntu、Debian Docker 部署](deploy/docker/INTEL-225H.zh-CN.md)。
