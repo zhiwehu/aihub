@@ -40,6 +40,23 @@ class ConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data['devices'][0]['protocol'],'websocket_v1')
         await ws.close()
 
+    async def test_device_bind_host_listens_on_all_interfaces_and_advertises_lan_address(self):
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        client = TestClient(TestServer(create_app(root, device_host='127.0.0.1',
+                                                  device_bind='0.0.0.0', device_port=18766)))
+        try:
+            await client.start_server()
+            hub = client.server.app[HUB]
+            self.assertTrue(hub.connections.device_ready)
+            self.assertEqual(hub.connections.device_host, '127.0.0.1')
+            self.assertEqual(hub.connections.device_port, 18766)
+            data = await (await client.get('/api/connections')).json()
+            self.assertEqual(data['websocket']['device_ready'], True)
+        finally:
+            await client.close()
+            tmp.cleanup()
+
     async def test_save_preserves_credentials_and_rejects_secret_changes(self):
         data = await (await self.client.get('/api/connections')).json()
         value = data['mqtt']['config']
