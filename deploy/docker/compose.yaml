@@ -88,9 +88,6 @@ services:
       - "8765"
       - "--host"
       - "0.0.0.0"
-      # Console is published on 127.0.0.1 only, so treat admin-API callers as
-      # the local user instead of demanding a token on every request.
-      - "--local-console"
       - "--client-host"
       - "0.0.0.0"
       - "--client-port"

@@ -174,8 +174,13 @@ front of the client listener.
 
 ## Security notes
 
-- The console publishes on `127.0.0.1` only, which is why the base compose can
-  pass `--local-console`. Do not publish 8765 on the LAN with that flag.
+- The console never passes `--local-console` in Docker, so every admin API call
+  needs the administrator token, even from the local machine. Print it with
+  `docker compose exec core python -m aihub_server --data /data --print-admin-token`
+  and paste it into the console login form (the session is stored as a cookie).
+- Set `AIHUB_CONSOLE_BIND=0.0.0.0` to reach the console over the LAN. Keep the
+  token secret: the page is plain HTTP, so the token crosses the wire in clear —
+  put it behind HTTPS if the network is not trusted.
 - The client listener (8768) never inherits administrator routes and always
   requires a client credential.
 - `AIHUB_CLIENT_LOOPBACK_PROXY=1` only relaxes the Origin-port-omission case for

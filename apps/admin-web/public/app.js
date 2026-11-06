@@ -774,6 +774,7 @@ $("login-form").onsubmit = async (event) => {
     });
     $("admin-token").value = "";
     $("login").hidden = true;
+    $("notice").hidden = true;
     await boot();
   } catch (e) {
     notice(e.message, true);
