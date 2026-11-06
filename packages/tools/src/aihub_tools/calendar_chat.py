@@ -58,12 +58,17 @@ def route(pipeline,history):
   # A new calendar request must not reuse the previous missing-slot state.
   clear_pending(pipeline);pending=None
  if pending and not topic and calendar_answer(text) is None and not is_conversational_turn(text):
-  has_time=bool(re.search(r'[0-9零一二三四五六七八九十两]+(?:点|时|分钟后|小时后)|\d{1,2}[:：]\d{2}',text))
-  date_only=bool(re.fullmatch(r'(?:今天|明天|后天|(?:本周|下周|周|星期)[一二三四五六日天]|\d{4}-\d{2}-\d{2})[。！!]*',text))
-  title_only=pending.get('needs_title') and len(text)<60 and not re.search('什么|天气|新闻|查|问|为什么|怎么|[？?]',text)
-  if (has_time or date_only or title_only) and not re.search(r'什么|是否|是不是|为什么|怎么|几点|吗|[？?]',text):text=pending['text']+'；用户补充（以此为准）：'+text;topic=True
-  else:
+  # A pending date/time/title question must not swallow a different domain
+  # (shopping, timers, files, weather) just because the sentence is short.
+  if re.search(r'买|购|洗衣机|购物|清单|计时|倒计时|音乐|文件|目录|天气|新闻',text):
    clear_pending(pipeline);pending=None
+  else:
+   has_time=bool(re.search(r'[0-9零一二三四五六七八九十两]+(?:点|时|分钟后|小时后)|\d{1,2}[:：]\d{2}',text))
+   date_only=bool(re.fullmatch(r'(?:今天|明天|后天|(?:本周|下周|周|星期)[一二三四五六日天]|\d{4}-\d{2}-\d{2})[。！!]*',text))
+   title_only=pending.get('needs_title') and len(text)<60 and not re.search('什么|天气|新闻|查|问|为什么|怎么|[？?]',text)
+   if (has_time or date_only or title_only) and not re.search(r'什么|是否|是不是|为什么|怎么|几点|吗|[？?]',text):text=pending['text']+'；用户补充（以此为准）：'+text;topic=True
+   else:
+    clear_pending(pipeline);pending=None
  explicit=bool(re.search(r'查|看|有哪些|有什么|什么提醒|我的提醒|几项|几点|什么时候|哪天|列表|添加|新建|创建|设置|记一下|记下来|取消|删除|提醒(?:我|一下|下)|安排(?:个|一个|一场)',text) or re.search(r'(?:今天|明天|后天|点|分钟后|小时后).*提醒',text) or re.fullmatch(r'(?:(?:我|今天|明天|后天|本周|下周|本月|的))*?(?:日程|提醒|安排)[？?。！!]*',text))
  if not explicit:return None
  if not topic or re.search(r'怎么|如何|什么意思|解释|介绍|支持.*吗',text):return None
