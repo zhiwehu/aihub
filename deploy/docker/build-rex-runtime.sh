@@ -36,7 +36,7 @@ if [ -d "$TARGET" ] && [ "${1:-}" != "--force" ]; then
   exit 0
 fi
 
-REQ="$(mktemp -t rex-req)"
+REQ="$(mktemp "${TMPDIR:-/tmp}/rex-req.XXXXXX")"
 trap 'rm -f "$REQ"' EXIT
 "$PY" - "$SOURCE" > "$REQ" <<'PY'
 import sys
