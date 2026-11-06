@@ -3,7 +3,6 @@ import asyncio
 import base64
 import contextlib
 import json
-import logging
 import os
 import re
 import ipaddress
@@ -945,10 +944,9 @@ class Session:
                         tts_first_ms=span(turn.first_text_at, turn.first_audio_at),
                         audio_ms=span(turn.first_audio_at, turn.audio_end_at),
                         elapsed_ms=span(turn.started, now))
-                    logging.getLogger(__name__).info(
-                        'turn timing id=%s asr=%sms llm_first=%sms tts_first=%sms audio=%sms total=%sms',
-                        turn.id[:8], timing['asr_ms'], timing['llm_first_ms'],
-                        timing['tts_first_ms'], timing['audio_ms'], timing['elapsed_ms'])
+                    print(f"turn timing id={turn.id[:8]} asr={timing['asr_ms']}ms "
+                          f"llm_first={timing['llm_first_ms']}ms tts_first={timing['tts_first_ms']}ms "
+                          f"audio={timing['audio_ms']}ms total={timing['elapsed_ms']}ms", flush=True)
                     await self.emit('turn.completed', turn, delivery=status, **timing)
         except asyncio.CancelledError:
             self.record_reply(turn, 'interrupted')
