@@ -66,6 +66,10 @@ set -e
 pip install -q --upgrade --no-deps --target /target --index-url $INDEX -r /req.txt 2>&1 | grep -viE 'warning' | tail -3 || true
 pip install -q --upgrade --force-reinstall --no-deps --target /target \
   --index-url $TORCH_INDEX 'torch==$TORCH' 2>&1 | grep -viE 'warning' | tail -3 || true
+# The source tree was built without torch's own dependencies; install the
+# small pure/binary set the CPU wheel needs (sympy, networkx, jinja2).
+pip install -q --upgrade --target /target --index-url $INDEX \
+  sympy networkx jinja2 setuptools 2>&1 | grep -viE 'warning' | tail -3 || true
 # PyPI's default torch wheel drags the whole CUDA stack in; the planner runs on CPU.
 rm -rf /target/nvidia /target/triton /target/cuda
 " || die "构建失败"
