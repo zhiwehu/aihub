@@ -1,13 +1,31 @@
-name: aihub-core
+# One deployment for every host.
+#
+# The images are identical on macOS and Linux: core (HTTP gateways + console)
+# and processing (minutes / retranscription / diarisation). Model inference is
+# never containerised — the containers reach OpenAI-compatible model services
+# through AIHUB-owned URLs. Which service that is, is the only difference
+# between hosts:
+#
+#   macOS  → native MLX workers on the host, reached as host.docker.internal
+#   Linux  → local AtomGradient / vLLM / whatever, reached directly
+#
+# The web client is NOT baked into the image. A verified client artifact (see
+# ../../scripts/install-client.py) is mounted read-only at /app/client-web; the
+# 8768 listener serves /demo/ from it, because that listener owns the client
+# credentials and the same-origin WebSocket.
+#
+#   docker compose up -d                                        # macOS / LAN-visible models
+#   docker compose -f compose.yaml -f compose.host.yaml up -d   # Linux, models bound to loopback
+#
+# Copy .env.example to .env, then create env/models.env from
+# env.models.env.example before the first start.
+name: aihub
 
 services:
-  aihub-server:
-    build:
-      # prepare-context.sh assembles this: sibling packages + web + VAD model.
-      context: context
-    image: "${AIHUB_IMAGE:-aihub-core:local}"
+  core:
+    image: "${AIHUB_CORE_IMAGE:-aihub-core:local}"
     container_name: "${AIHUB_CONTAINER:-aihub-core}"
-    # Bearer tokens for the native model workers (see model-host.sh).
+    # Bearer keys for the model services plus the shared processing token.
     env_file:
       - env/models.env
     environment:
@@ -15,41 +33,43 @@ services:
       AIHUB_CLIENT_ROOT: /app/client-web
       AIHUB_CLIENT_PUBLIC_PORT: "${AIHUB_CLIENT_PORT:-8768}"
       # Origin compatibility only; client authentication never trusts the bridge.
-      # Valid only with the client port published on host loopback below.
+      # Valid only while the client port is published on host loopback below.
       AIHUB_CLIENT_LOOPBACK_PROXY: "1"
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
       # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
       # produces a Linux copy next to it and the planner worker loads this one.
       AIHUB_REX_RUNTIME: /data/rex-runtime-linux
-      # The USB provisioning assistant is a module from aihub-firmware; the
+      # The USB provisioning assistant is a module from the firmware release; the
       # console imports it from /firmware, so the directory has to be published.
       AIHUB_FIRMWARE_ROOT: /firmware
+      # Container-side address of the processing service below.
+      AIHUB_MODELS_URL: "${AIHUB_MODELS_URL:-http://processing:8790}"
     ports:
-      # Console, loopback only — same reach as native mode (start.sh binds
-      # 127.0.0.1). The container still sees Docker's gateway as the peer, which
-      # is why --local-console is set below.
+      # Console, loopback only — same reach as native mode. The container sees
+      # Docker's gateway as the peer, which is why --local-console is set below.
       - "127.0.0.1:${AIHUB_CONTAINER_PORT:-8765}:8765"
       - "127.0.0.1:${AIHUB_CLIENT_PORT:-8768}:8768"
-      # 喵伴 device ingress. The server binds 0.0.0.0 inside the container
-      # (--device-bind) and keeps advertising the LAN address from
-      # data/connections.json, so devices see a reachable URL.
-      - "8766:8766"
+      # Device ingress. The server binds 0.0.0.0 inside the container
+      # (--device-bind) and advertises the LAN address from AIHUB_DEVICE_HOST.
+      - "${AIHUB_DEVICE_BIND:-0.0.0.0}:${AIHUB_DEVICE_PORT:-8766}:8766"
     volumes:
-      # Same data directory the native model tier reads: recordings, history,
-      # tokens and settings.json are shared.
-      - "${AIHUB_DATA:-../../data}:/data"
+      - "${AIHUB_DATA:?set AIHUB_DATA in .env}:/data"
+      # Verified client artifact; server-only image, mounted read-only.
+      - "${AIHUB_CLIENT_ROOT:?set AIHUB_CLIENT_ROOT in .env}:/app/client-web:ro"
       # Music and file-organiser folders are bind-mounted at the *same absolute
       # path* inside the container, so the host paths saved in settings.json keep
-      # working in both deployment modes. configure.sh derives these from the
-      # live config and writes them to .env; export them to override.
-      - "${AIHUB_MUSIC_DIR}:${AIHUB_MUSIC_DIR}:ro"
-      - "${AIHUB_FILES_DIR}:/${AIHUB_FILES_DIR}"
-      # Web Serial flashing assistant (aihub-firmware/flash), read-only.
-      - "${AIHUB_FIRMWARE_DIR:-../../data/flash}:/firmware:ro"
+      # working in both deployment modes.
+      - "${AIHUB_MUSIC_DIR:?set AIHUB_MUSIC_DIR in .env}:${AIHUB_MUSIC_DIR}:ro"
+      - "${AIHUB_FILES_DIR:?set AIHUB_FILES_DIR in .env}:${AIHUB_FILES_DIR}"
+      # Web Serial flashing assistant, read-only. Missing directory only disables
+      # the flashing panel.
+      - "${AIHUB_FIRMWARE_DIR:-./firmware}:/firmware:ro"
     extra_hosts:
-      # Docker Desktop resolves this already; host-gateway keeps it working if
-      # the image is ever run under a plain Linux engine.
+      # Docker Desktop resolves this already; host-gateway keeps it working on a
+      # plain Linux engine (used by the bridge-network deployment).
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - processing
     restart: unless-stopped
     command:
       - "--data"
@@ -66,14 +86,60 @@ services:
       - "--client-port"
       - "8768"
       # Listen on every container interface; the advertised address comes from
-      # data/connections.json (e.g. 192.168.2.122) written by the console or by
-      # native mode. OTA answers derive the ws:// URL from the Host header, so a
-      # device that reaches us on <lan-ip>:8766 is told <lan-ip>:8766.
+      # AIHUB_DEVICE_HOST, because a container cannot see the host NIC.
+      # OTA answers derive the ws:// URL from the Host header.
       - "--device-bind"
       - "0.0.0.0"
       - "--device-port"
       - "8766"
-      # What devices are told to dial. configure.sh detects the host's LAN
-      # address; without it the server would only see the container's bridge IP.
       - "--device-host"
-      - "${AIHUB_DEVICE_HOST}"
+      - "${AIHUB_DEVICE_HOST:?set AIHUB_DEVICE_HOST in .env}"
+
+  processing:
+    image: "${AIHUB_PROCESSING_IMAGE:-aihub-processing:local}"
+    container_name: "${AIHUB_PROCESSING_CONTAINER:-aihub-processing}"
+    env_file:
+      - env/models.env
+    environment:
+      # Minutes / retranscription / diarisation use HTTP model services. Point
+      # them at the same endpoints the console uses; keys come from env_file.
+      AIHUB_MINUTES_PROVIDER: http
+      AIHUB_MINUTES_URL: "${LLM_URL:?set LLM_URL in .env}"
+      AIHUB_MINUTES_MODEL: "${LLM_MODEL:?set LLM_MODEL in .env}"
+      AIHUB_MINUTES_KEY_ENV: VOICE_LLM_KEY
+      AIHUB_MEDIA_ASR_PROVIDER: http
+      AIHUB_MEDIA_ASR_URL: "${ASR_URL:?set ASR_URL in .env}"
+      AIHUB_MEDIA_ASR_MODEL: "${ASR_MODEL:?set ASR_MODEL in .env}"
+      AIHUB_MEDIA_ASR_KEY_ENV: VOICE_ASR_KEY
+    volumes:
+      - "${AIHUB_DATA:?set AIHUB_DATA in .env}:/data"
+    restart: unless-stopped
+
+  # Optional adapter for model services that speak a private protocol instead of
+  # OpenAI-compatible HTTP (today: AtomGradient's bidirectional TTS + ASR).
+  # Enable it with COMPOSE_PROFILES=bridge in .env, then point the console's TTS
+  # and/or ASR at http://bridge:18095/v1 (host networking: http://127.0.0.1:18095/v1).
+  bridge:
+    profiles: ["bridge"]
+    image: "${AIHUB_CORE_IMAGE:-aihub-core:local}"
+    container_name: "${AIHUB_BRIDGE_CONTAINER:-aihub-bridge}"
+    entrypoint: ["python", "/app/bridge.py"]
+    environment:
+      BRIDGE_HOST: "0.0.0.0"
+      BRIDGE_PORT: "18095"
+      ASR_URL: "${ATOM_ASR_URL:-http://host.docker.internal:18094/v1/asr}"
+      TTS_HTTP_URL: "${ATOM_TTS_HTTP_URL:-http://host.docker.internal:18094/api/v1/tts}"
+      TTS_WS_URL: "${ATOM_TTS_WS_URL:-ws://host.docker.internal:18093/api/v3/tts/bidirection}"
+      UPSTREAM_HEALTH_URL: "${ATOM_HEALTH_URL:-http://host.docker.internal:18094/health}"
+      TTS_MODE: "${TTS_MODE:-ws}"
+    volumes:
+      - "./bridge.py:/app/bridge.py:ro"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18095/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

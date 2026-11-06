@@ -2,7 +2,7 @@
 # Run the AIHub model tier natively on this Mac and hand its URLs to the
 # containerised control plane.
 #
-#   ./model-host.sh start    # aihub-models serve (:8790) + asr/llm/tts workers
+#   ./model-host.sh start    # asr/llm/tts workers only (processing is a container)
 #   ./model-host.sh status
 #   ./model-host.sh stop
 #
@@ -22,7 +22,6 @@ PIDS="$ENVDIR/pids"
 ASR_PORT=8781
 LLM_PORT=8782
 TTS_PORT=8767
-MEDIA_PORT=8790
 
 say() { printf '%s\n' "$*"; }
 die() { printf '错误: %s\n' "$*" >&2; exit 1; }
@@ -51,8 +50,6 @@ VOICE_ASR_KEY=$(gen_token)
 VOICE_LLM_KEY=$(gen_token)
 VOICE_TTS_KEY=$(gen_token)
 AIHUB_MODELS_TOKEN=$(gen_token)
-# Container-side address of the native post-processing service.
-AIHUB_MODELS_URL=http://host.docker.internal:$MEDIA_PORT
 EOF
   )
   say "已生成 $ENVFILE"
@@ -112,33 +109,25 @@ do_start() {
   start_one tts "$TTS_PORT" env AIHUB_WORKER_TOKEN="$(token_of VOICE_TTS_KEY)" \
     "$PY" -m aihub_models worker --kind tts --model "$tts_model" \
     --service-id "$(gen_id)" --port "$TTS_PORT"
-  # The container reaches this service via host.docker.internal, so its peer is
-  # the bridge gateway; AIHUB_MODELS_ALLOW_REMOTE lifts the loopback-only check
-  # (the bearer token still gates every request).
-  start_one media "$MEDIA_PORT" env AIHUB_MODELS_ALLOW_REMOTE=1 \
-    "$PY" -m aihub_models serve --data "$DATA" --port "$MEDIA_PORT" \
-    --token "$(token_of AIHUB_MODELS_TOKEN)"
-
   say
   say "等待模型就绪（首次加载 LLM 可能要一两分钟）…"
   report_health asr "$ASR_PORT" "$(token_of VOICE_ASR_KEY)"
   report_health llm "$LLM_PORT" "$(token_of VOICE_LLM_KEY)"
   report_health tts "$TTS_PORT" "$(token_of VOICE_TTS_KEY)"
-  report_health media "$MEDIA_PORT" "$(token_of AIHUB_MODELS_TOKEN)"
 
   say
   say "模型 tier URL（容器内走 host.docker.internal）:"
   say "  asr   http://host.docker.internal:$ASR_PORT/v1/audio/transcriptions"
   say "  llm   http://host.docker.internal:$LLM_PORT/v1/chat/completions"
   say "  tts   http://host.docker.internal:$TTS_PORT/v1/audio/speech"
-  say "  media http://host.docker.internal:$MEDIA_PORT"
+  say "  （后处理由 compose 里的 processing 容器提供，不再在宿主上跑）"
   say
-  say "下一步: ./configure.sh  然后  docker compose up -d --build"
+  say "下一步: ./configure.sh  然后  docker compose up -d"
 }
 
 do_stop() {
   say "停止模型 tier…"
-  for label in asr llm tts media; do
+  for label in asr llm tts; do
     pidfile="$PIDS/$label.pid"
     [ -f "$pidfile" ] || continue
     "$PY" -m aihub_server.workspace_process stop "$pidfile" aihub_models
@@ -147,7 +136,7 @@ do_stop() {
 }
 
 do_status() {
-  for pair in "asr:$ASR_PORT" "llm:$LLM_PORT" "tts:$TTS_PORT" "media:$MEDIA_PORT"; do
+  for pair in "asr:$ASR_PORT" "llm:$LLM_PORT" "tts:$TTS_PORT"; do
     label="${pair%%:*}"; port="${pair##*:}"
     pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)
     if [ -n "$pid" ]; then say "  $label 运行中 pid $pid  :$port"

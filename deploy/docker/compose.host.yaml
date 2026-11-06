@@ -1,0 +1,56 @@
+# Linux-only override: put the containers on the host network.
+#
+# Use this when the model services bind 127.0.0.1 and must stay private. On
+# macOS this file is useless — Docker Desktop's host networking cannot reach the
+# Mac's loopback (verified: the container gets ECONNREFUSED on 127.0.0.1), which
+# is exactly why the base file publishes ports and uses host.docker.internal.
+#
+#   docker compose -f compose.yaml -f compose.host.yaml up -d
+#
+# Everything else — images, env, data layout, client artifact — stays the same.
+# Published ports are meaningless under host networking, so they are reset; the
+# console binds 127.0.0.1 itself and the client/device listeners bind 0.0.0.0.
+services:
+  core:
+    network_mode: host
+    ports: !reset []
+    environment:
+      # The container shares the host's loopback, so no gateway hop is needed.
+      AIHUB_MODELS_URL: http://127.0.0.1:8790
+      # No Docker gateway rewriting here: loopback peers are already local, and
+      # the client listener is reachable from the LAN, so drop the proxy hint.
+      AIHUB_CLIENT_LOOPBACK_PROXY: ""
+    command:
+      - "--data"
+      - "/data"
+      - "--port"
+      - "8765"
+      # Console stays loopback-only; unlike the published-port deployment there
+      # is no gateway peer to translate, so --local-console is unnecessary.
+      - "--host"
+      - "127.0.0.1"
+      - "--client-host"
+      - "0.0.0.0"
+      - "--client-port"
+      - "8768"
+      - "--device-bind"
+      - "0.0.0.0"
+      - "--device-port"
+      - "8766"
+      - "--device-host"
+      - "${AIHUB_DEVICE_HOST:?set AIHUB_DEVICE_HOST in .env}"
+
+  processing:
+    network_mode: host
+    ports: !reset []
+
+  bridge:
+    network_mode: host
+    ports: !reset []
+    environment:
+      # Host networking: keep the unauthenticated adapter off the LAN.
+      BRIDGE_HOST: "127.0.0.1"
+      ASR_URL: "${ATOM_ASR_URL:-http://127.0.0.1:18094/v1/asr}"
+      TTS_HTTP_URL: "${ATOM_TTS_HTTP_URL:-http://127.0.0.1:18094/api/v1/tts}"
+      TTS_WS_URL: "${ATOM_TTS_WS_URL:-ws://127.0.0.1:18093/api/v3/tts/bidirection}"
+      UPSTREAM_HEALTH_URL: "${ATOM_HEALTH_URL:-http://127.0.0.1:18094/health}"

@@ -1,29 +1,31 @@
 # Intel Core Ultra 5 225H：离线包 Docker 部署
 
 更新：2026-11-06。Ubuntu 24.04、Debian 12/13，x86_64。
-目标机只要 Docker；镜像、Compose 和脚本都在离线包里。模型用机器上已有的 LLM/ASR/TTS
-HTTP 服务，本文不装模型。
+目标机只要 Docker；镜像、Compose 和脚本都在离线包里。模型用机器上已有的
+LLM/ASR/TTS HTTP 服务，本文不装模型。
 
 | 容器 | 作用 | 端口 |
 | --- | --- | --- |
-| core | 管理端、网页客户端接口、ESP32 网关 | 127.0.0.1:8765 / 0.0.0.0:8768 / LAN IP:8766 |
-| processing | 后处理、转写、纪要 | 127.0.0.1:8790 |
+| `core`（aihub-core） | 管理端、网页客户端接口、ESP32 网关 | 127.0.0.1:8765 / 0.0.0.0:8768 / LAN:8766 |
+| `processing`（aihub-processing） | 后处理、转写、纪要 | 127.0.0.1:8790（host 网络） |
+| `bridge`（可选） | AtomGradient 私有协议适配 | 127.0.0.1:18095 |
 
-网页客户端页面不在本机部署，由 `aihub-client-web` 构建后另行托管；服务端只提供 8768
-的接口。
+这份包和 macOS 上跑的是**同一套代码、同一批镜像、同一份 compose**；唯一的差别是
+`.env` 里的模型地址，以及 Linux 上用 `compose.host.yaml` 把容器放到 host 网络。
 
 ## 1. 构建离线包（构建机）
 
-在已有 `aihub` 仓库、装了 Docker 的机器上：
+在 `aihub` 仓库根目录、装了 Docker 的机器上：
 
 ```bash
-cd ~/aihub-src/aihub
 ./scripts/install.sh            # 首次，建 .venv
 ./deploy/docker/build-bundle.sh
 ```
 
-产物：`dist/aihub-225h-<tag>.tar.gz`。默认按 `linux/amd64` 构建，Mac 上会自动交叉构建。
-包里有：两个镜像、`compose.yaml`、`.env.example`、`install.sh`、这份说明。
+产物：`dist/aihub-225h-<tag>.tar.gz`（默认 `linux/amd64`，Mac 上会自动交叉构建）。
+包里有：两个镜像、`compose.yaml`、`compose.host.yaml`、`.env.example`、
+`env.models.env.example`、`install.sh`、`bridge.py`、这份说明，以及（如果在
+`deploy/docker/client-web/` 里装过客户端）`client-web/`。
 
 ## 2. 传到 225H 并启动
 
@@ -37,7 +39,7 @@ nano .env
 ./install.sh
 ```
 
-`.env` 需要改的只有模型地址：
+`.env` 需要改的是模型地址（其余路径由 `install.sh` 自动换成绝对路径）：
 
 ```bash
 ASR_URL=http://127.0.0.1:8781/v1
@@ -46,12 +48,13 @@ LLM_URL=http://127.0.0.1:8782/v1
 LLM_MODEL=你的LLM模型ID
 ```
 
-- 这两项给后处理容器用；管理台里的 ASR/LLM 也填同一组值。
-- `AIHUB_MODELS_TOKEN` 由 `install.sh` 自动生成，`AIHUB_DEPLOY=.` 不用改。
-- 网页客户端页面部署好后，把它的 origin 填到 `CLIENT_ORIGINS`（多个用逗号分隔）；
-  信任整个局域网时直接填 `*`（仍然需要连接码）。页面完整地址填到 `CLIENT_PUBLIC_URL`。
+- 这两项给 `processing` 容器和纪要/转写用；管理台里的 ASR/LLM 也填同一组值。
+- `AIHUB_MODELS_TOKEN` 由 `install.sh` 自动生成在 `env/models.env`（600 权限）。
+- `AIHUB_CORE_IMAGE` / `AIHUB_PROCESSING_IMAGE` 已由包固定，不要改。
+- `AIHUB_DEVICE_HOST` 填本机局域网地址（设备要拨的地址）。
 
-`install.sh` 会导入镜像、创建 `data/`、启动两个容器。
+`install.sh` 会导入镜像、创建 `data/ music/ files/ firmware/ env/`，然后用
+`compose.yaml + compose.host.yaml` 启动。
 
 ## 3. 管理台
 
@@ -61,38 +64,54 @@ LLM_MODEL=你的LLM模型ID
 ssh -N -L 8765:127.0.0.1:8765 root@192.168.1.50
 ```
 
-打开 `http://127.0.0.1:8765`，管理员令牌：
-
-```bash
-cd /root/aihub-225h
-docker compose exec core python -m aihub_server --data /data --print-admin-token
-```
-
-首次配置：
+打开 `http://127.0.0.1:8765`。首次配置：
 
 1. 「模型」页把 ASR/LLM/TTS 切到 HTTP API，填地址、模型 ID、TTS 音色和采样率。
 2. 「连接」页把设备监听 IPv4 选成本机局域网地址，保存后启动设备监听（8766）。
 3. 「客户端接入」生成连接码，给网页客户端用。
 
-## 4. 网页客户端
-
-页面在 [`aihub-client-web`](https://github.com/zhiwehu/aihub-client-web) 构建，
-放到任意静态主机（保持 `/demo/assets/` 路径）。把页面 origin 写进 `.env` 的
-`CLIENT_ORIGINS`、页面地址写进 `CLIENT_PUBLIC_URL`，再执行：
+管理员令牌（需要命令行时）：
 
 ```bash
-cd /root/aihub-225h
-docker compose up -d --force-recreate core
+docker compose -f compose.yaml -f compose.host.yaml exec core \
+  python -m aihub_server --data /data --print-admin-token
 ```
 
-客户端页面里填：
+## 4. 网页客户端
 
-- 服务地址：`http://192.168.1.50:8768`
-- 连接码：第 3 步生成的
+客户端页面在 [`aihub-client-web`](https://github.com/zhiwehu/aihub-client-web) 构建，
+**不打进 core 镜像**。两种用法：
 
-页面用 localhost 打开才能用麦克风；局域网 HTTP 页面需要 HTTPS。
+- 包里有 `client-web/`：`install.sh` 会把它挂进容器，直接访问
+  `http://<服务器IP>:8768/demo/`；
+- 没有的话，把构建机上装好的 artifact 拷过来：
 
-## 5. ESP32
+```bash
+# 构建机
+.venv/bin/python scripts/install-client.py <client-release> \
+  --destination deploy/docker/client-web
+
+# 目标机（放到部署目录后重启 core）
+scp -r deploy/docker/client-web root@192.168.1.50:/root/aihub-225h/
+cd /root/aihub-225h && docker compose -f compose.yaml -f compose.host.yaml restart core
+```
+
+页面用 localhost 打开才能用麦克风；局域网 HTTP 页面需要 HTTPS 反代。
+
+## 5. AtomGradient 私有协议（可选）
+
+如果 TTS/ASR 走 AtomGradient 的 WS 流式协议，在 `.env` 里启用 bridge：
+
+```bash
+COMPOSE_PROFILES=bridge
+ATOM_ASR_URL=http://127.0.0.1:18094/v1/asr
+ATOM_TTS_HTTP_URL=http://127.0.0.1:18094/api/v1/tts
+ATOM_TTS_WS_URL=ws://127.0.0.1:18093/api/v3/tts/bidirection
+```
+
+然后管理台里的 TTS 地址填 `http://127.0.0.1:18095/v1`（host 网络）。
+
+## 6. ESP32
 
 管理台「连接」页启动设备监听后，设备连：
 
@@ -101,14 +120,13 @@ ws://192.168.1.50:8766/xiaozhi/v1/
 ```
 
 地址以管理台显示为准，设备按配网/OTA 下发的地址拨号。OTA 用设备凭证，不是管理令牌。
+需要网页 USB 刷机时，把固件 release 的 `flash/` 放进部署目录的 `firmware/`（已挂到
+`/firmware`）。
 
-需要网页 USB 刷机时，把 `aihub-firmware/flash` 只读挂到 core 的 `/firmware`，并在
-`compose.yaml` 的 core 服务里加 `AIHUB_FIRMWARE_ROOT: /firmware`。
+## 7. 升级与备份
 
-## 6. 升级与备份
-
-升级：解压新包到同一目录（覆盖 Compose 和镜像），再执行 `./install.sh`。`.env` 和
-`data/` 不会被覆盖。
+升级：解压新包到同一目录（覆盖 compose、脚本和镜像），再执行 `./install.sh`。
+`.env`、`env/`、`data/` 不会被覆盖。
 
 ```bash
 tar xzf aihub-225h-<新tag>.tar.gz -C /root/aihub-225h
@@ -120,18 +138,18 @@ docker image prune
 
 ```bash
 cd /root/aihub-225h
-docker compose stop
-tar -czf "backups/runtime-$(date +%Y%m%d-%H%M%S).tar.gz" data .env model-keys.env compose.yaml
-docker compose start
+docker compose -f compose.yaml -f compose.host.yaml stop
+tar -czf "backups/runtime-$(date +%Y%m%d-%H%M%S).tar.gz" data .env env compose.yaml
+docker compose -f compose.yaml -f compose.host.yaml start
 ```
 
 日志：
 
 ```bash
-docker compose logs --since=10m --tail=150 core processing
+docker compose -f compose.yaml -f compose.host.yaml logs --since=10m --tail=150 core processing
 ```
 
-## 7. 参考
+## 8. 参考
 
 - [Intel 225H 规格](https://www.intel.com/content/www/us/en/products/sku/241749/intel-core-ultra-5-processor-225h-18m-cache-up-to-4-90-ghz/specifications.html)
 - [Docker host 网络](https://docs.docker.com/engine/network/drivers/host/)

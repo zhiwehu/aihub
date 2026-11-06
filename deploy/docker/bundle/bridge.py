@@ -1,8 +1,12 @@
-"""Speech bridge for the local AtomGradient service.
+"""Speech bridge for AtomGradient-style model services.
 
 AIHub calls OpenAI-style /v1/audio/transcriptions and /v1/audio/speech. ASR
 stays on the HTTP route; TTS first tries the native bidirectional WebSocket
 (streaming PCM) and falls back to the existing non-streaming HTTP endpoint.
+
+Every upstream address is environment-driven, so the same adapter runs on a Mac
+(host.docker.internal), next to the provider on a Linux host (127.0.0.1), or
+against another machine on the LAN. Nothing here is platform-specific.
 """
 import base64
 import contextlib
@@ -13,13 +17,23 @@ import struct
 import uuid
 import wave
 
-import psutil
+try:  # Optional: host PID introspection only works when the bridge shares it.
+    import psutil
+except ImportError:  # pragma: no cover - the adapter runs fine without it
+    psutil = None
+
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 
-ASR = 'http://127.0.0.1:18094/v1/asr'
-TTS_HTTP = 'http://127.0.0.1:18094/api/v1/tts'
-TTS_WS = os.environ.get('TTS_WS_URL', 'ws://127.0.0.1:18093/api/v3/tts/bidirection')
+def _upstream(name, default):
+    return os.environ.get(name, '').strip() or default
+
+ASR = _upstream('ASR_URL', 'http://127.0.0.1:18094/v1/asr')
+TTS_HTTP = _upstream('TTS_HTTP_URL', 'http://127.0.0.1:18094/api/v1/tts')
+TTS_WS = _upstream('TTS_WS_URL', 'ws://127.0.0.1:18093/api/v3/tts/bidirection')
+HEALTH = _upstream('UPSTREAM_HEALTH_URL', 'http://127.0.0.1:18094/health')
 TTS_MODE = os.environ.get('TTS_MODE', 'ws').strip().lower()
+BRIDGE_HOST = _upstream('BRIDGE_HOST', '127.0.0.1')
+BRIDGE_PORT = int(os.environ.get('BRIDGE_PORT', '18095'))
 TIMEOUT = ClientTimeout(total=180)
 LANG = {'zh': 'Chinese', 'zh-CN': 'Chinese', 'en': 'English', 'auto': ''}
 
@@ -182,16 +196,22 @@ async def health(request):
     info = {'ok': True}
     try:
         async with ClientSession(timeout=ClientTimeout(total=2)) as session:
-            async with session.get('http://127.0.0.1:18094/health') as response:
+            async with session.get(HEALTH) as response:
                 upstream = await response.json()
+        info.update(ready=upstream.get('status') == 'ready',
+                    model=upstream.get('asr_model'))
         pid = upstream.get('pid')
-        if pid:
-            process = psutil.Process(pid)
-            info.update(pid=pid, rss=process.memory_info().rss,
-                        cpu_percent=process.cpu_percent(interval=None),
-                        threads=process.num_threads(),
-                        ready=upstream.get('status') == 'ready',
-                        model=upstream.get('asr_model'))
+        # Only meaningful when the bridge shares the provider's PID namespace
+        # (host networking on Linux). macOS Docker runs the bridge inside a VM,
+        # so the macOS PID does not exist there and the lookup is skipped.
+        if pid and psutil is not None:
+            try:
+                process = psutil.Process(pid)
+                info.update(pid=pid, rss=process.memory_info().rss,
+                            cpu_percent=process.cpu_percent(interval=None),
+                            threads=process.num_threads())
+            except Exception:
+                info['pid'] = pid
     except Exception as exc:
         info['error'] = type(exc).__name__
     info['tts_transport'] = 'websocket' if TTS_MODE != 'http' else 'http'
@@ -204,4 +224,4 @@ app = web.Application()
 app.router.add_post('/v1/audio/transcriptions', transcriptions)
 app.router.add_post('/v1/audio/speech', speech)
 app.router.add_get('/health', health)
-web.run_app(app, host='127.0.0.1', port=18095, access_log=None)
+web.run_app(app, host=BRIDGE_HOST, port=BRIDGE_PORT, access_log=None)
