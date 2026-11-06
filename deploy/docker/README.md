@@ -143,6 +143,31 @@ Portability notes, both verified on Docker Desktop 4.35 / macOS:
 `context/`, `env/`, `.env` are generated and ignored by Git. `env/models.env`
 holds bearer keys — mode 600, never commit.
 
+## Clients on other machines (LAN)
+
+By default both the console and the client listener publish on loopback. To open
+the web client from another machine, publish only the client listener and keep
+the console private:
+
+```sh
+# .env
+AIHUB_CLIENT_BIND=0.0.0.0
+AIHUB_CLIENT_LOOPBACK_PROXY=0
+AIHUB_CLIENT_PUBLIC_URL=http://192.168.1.50:8768/demo/
+# Only needed when the page itself is hosted on another origin:
+# AIHUB_CLIENT_ORIGINS=http://192.168.1.50:8768
+```
+
+Open `AIHUB_CLIENT_PUBLIC_URL` on the other machine and paste a connection code
+generated in the console. The page always talks to its own origin, so no server
+address has to be typed anywhere.
+
+Microphone caveat: browsers expose `getUserMedia` only in a secure context.
+`http://localhost` qualifies, a plain `http://192.168.x.x` address does not — chat
+and recording start, but the microphone is refused. For voice from another
+machine put the client listener behind HTTPS, or use the device path (8766),
+which carries its own credentials and has no such restriction.
+
 ## Security notes
 
 - The console publishes on `127.0.0.1` only, which is why the base compose can

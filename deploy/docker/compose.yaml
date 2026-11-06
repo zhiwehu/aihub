@@ -37,7 +37,11 @@ services:
       AIHUB_CLIENT_PUBLIC_PORT: "${AIHUB_CLIENT_PORT:-8768}"
       # Origin compatibility only; client authentication never trusts the bridge.
       # Valid only while the client port is published on host loopback below.
-      AIHUB_CLIENT_LOOPBACK_PROXY: "1"
+      AIHUB_CLIENT_LOOPBACK_PROXY: "${AIHUB_CLIENT_LOOPBACK_PROXY:-1}"
+      # Cross-origin page hosting (e.g. the client page served elsewhere on the
+      # LAN) and the address shown by the console's "open client" link.
+      AIHUB_CLIENT_ORIGINS: "${AIHUB_CLIENT_ORIGINS:-}"
+      AIHUB_CLIENT_PUBLIC_URL: "${AIHUB_CLIENT_PUBLIC_URL:-}"
       VOICE_VAD_MODEL: /app/assets/silero_vad_v6.onnx
       # The vendored <data>/rex-runtime is a macOS pip tree; build-rex-runtime.sh
       # produces a Linux copy next to it and the planner worker loads this one.
@@ -48,10 +52,13 @@ services:
       # Container-side address of the processing service below.
       AIHUB_MODELS_URL: "${AIHUB_MODELS_URL:-http://processing:8790}"
     ports:
-      # Console, loopback only — same reach as native mode. The container sees
-      # Docker's gateway as the peer, which is why --local-console is set below.
-      - "127.0.0.1:${AIHUB_CONTAINER_PORT:-8765}:8765"
-      - "127.0.0.1:${AIHUB_CLIENT_PORT:-8768}:8768"
+      # Console stays on loopback by default: it carries administrator APIs.
+      - "${AIHUB_CONSOLE_BIND:-127.0.0.1}:${AIHUB_CONTAINER_PORT:-8765}:8765"
+      # The client listener is the one LAN browsers may reach. Set
+      # AIHUB_CLIENT_BIND=0.0.0.0 to serve other machines; browsers still need a
+      # client credential, and microphone capture additionally needs HTTPS
+      # (localhost is the only insecure origin Chrome accepts).
+      - "${AIHUB_CLIENT_BIND:-127.0.0.1}:${AIHUB_CLIENT_PORT:-8768}:8768"
       # Device ingress. The server binds 0.0.0.0 inside the container
       # (--device-bind) and advertises the LAN address from AIHUB_DEVICE_HOST.
       - "${AIHUB_DEVICE_BIND:-0.0.0.0}:${AIHUB_DEVICE_PORT:-8766}:8766"
