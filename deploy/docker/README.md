@@ -19,7 +19,7 @@ release and supply a trusted VAD ONNX model. For a server-only image (no web
 client), skip the client install and pass `--no-client` to the context script:
 
 ```sh
-./scripts/install.sh --dev
+./scripts/install.sh
 .venv/bin/python scripts/install-client.py /absolute/path/to/client-release
 VOICE_VAD_MODEL=/absolute/path/to/silero_vad_v6.onnx ./deploy/docker/prepare-context.sh
 docker build -t aihub-core:local deploy/docker/context

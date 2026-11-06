@@ -25,7 +25,7 @@ Compose 插件，然后：
 ```bash
 mkdir -p "$HOME/aihub-src" && cd "$HOME/aihub-src"
 git clone https://github.com/zhiwehu/aihub.git
-cd aihub && ./scripts/install.sh --dev
+cd aihub && ./scripts/install.sh
 ```
 
 HTTPS 不通时改用 `git@github.com:` 地址，并先配置好 SSH Key。
