@@ -5,7 +5,18 @@
 # Building straight from the workspace root would ship .venv/ and data/ to the
 # daemon, so instead this copies only the four trees the image needs into
 # ./context and the Dockerfile is built from there.
+#
+# Pass --no-client for a server-only image: the web-client artifact is skipped
+# and /demo/ stays unavailable until one is installed by the client repository.
 set -eu
+
+with_client=1
+for option in "$@"; do
+  case "$option" in
+    --no-client) with_client=0 ;;
+    *) echo "用法: $0 [--no-client]" >&2; exit 2 ;;
+  esac
+done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"          # aihub/
@@ -33,8 +44,13 @@ done
   echo "错误: 找不到 $ROOT/apps/admin-web/public/index.html" >&2; exit 1; }
 cp -R "$ROOT/apps/admin-web/public/." "$CTX/web/"
 CLIENT_ARTIFACT="${AIHUB_CLIENT_ROOT:-$ROOT/.artifacts/client-web}"
-[ -f "$CLIENT_ARTIFACT/index.html" ] || { echo "Set AIHUB_CLIENT_ROOT to an exported client artifact." >&2; exit 1; }
-"$ROOT/.venv/bin/python" "$ROOT/scripts/install-client.py" "$CLIENT_ARTIFACT" --destination "$CTX/client-web"
+if [ "$with_client" = 1 ]; then
+  [ -f "$CLIENT_ARTIFACT/index.html" ] || { echo "Set AIHUB_CLIENT_ROOT to an exported client artifact, or pass --no-client for a server-only image." >&2; exit 1; }
+  "$ROOT/.venv/bin/python" "$ROOT/scripts/install-client.py" "$CLIENT_ARTIFACT" --destination "$CTX/client-web"
+  echo "  + client-web/ (来自 $CLIENT_ARTIFACT)"
+else
+  echo "  - client-web/ (已跳过: 服务端镜像不含网页客户端)"
+fi
 echo "  + web/ ($(find "$CTX/web" -type f | wc -l | tr -d ' ') 个文件)"
 
 # Silero VAD ONNX: the server borrows it from faster_whisper's assets, which are

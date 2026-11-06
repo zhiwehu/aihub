@@ -1,9 +1,11 @@
 # Core Docker deployment
 
 For a Linux x86_64 CPU setup reusing existing HTTP model services, with core and processing containers, see the
-[Intel Core Ultra 5 225H guide (中文)](INTEL-225H.zh-CN.md). It uses a separate
-Linux host-network Compose example; do not combine its networking with the
-bridge-network deployment below.
+[Intel Core Ultra 5 225H guide (中文)](INTEL-225H.zh-CN.md). That guide deploys
+the server only: the web client is built and released from its own repository, so
+`prepare-context.sh --no-client` and `aihub-server --no-client` are used. It also
+uses a separate Linux host-network Compose example; do not combine its networking
+with the bridge-network deployment below.
 
 This image contains core common/tools/server packages and the included management
 console. Processing and inference remain separate services; Linux external HTTP
@@ -12,7 +14,8 @@ models do not require MLX. See ../linux/README.md for provider settings/systemd.
 ## Explicit build inputs
 
 From the core repository root install the environment, install a verified client
-release and supply a trusted VAD ONNX model:
+release and supply a trusted VAD ONNX model. For a server-only image (no web
+client), skip the client install and pass `--no-client` to the context script:
 
 ```sh
 ./scripts/install.sh --dev
@@ -22,9 +25,10 @@ docker build -t aihub-core:local deploy/docker/context
 ```
 
 The build context copies only this repository's packages/admin assets, the
-explicit client artifact, and VAD. It never reads sibling source repositories,
-`.venv`, runtime data, credentials or weights beyond the explicitly selected VAD.
-Docker installs package metadata/license/readme along with source.
+explicit client artifact when one is selected, and VAD. It never reads sibling
+source repositories, `.venv`, runtime data, credentials or weights beyond the
+explicitly selected VAD. Docker installs package metadata/license/readme along
+with source.
 
 Before `docker compose` copy env.models.env.example to env/models.env and supply
 real endpoint bearer keys/shared processing token. Protect it with mode 600.

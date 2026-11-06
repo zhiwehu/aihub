@@ -1,18 +1,23 @@
-# Intel Core Ultra 5 225H：Ubuntu / Debian Docker 部署
+# Intel Core Ultra 5 225H：Ubuntu / Debian 服务端 Docker 部署
 
 更新：2026-11-06。适用于 Ubuntu 24.04、Debian 12/13 的 x86_64 主机。
-这是按当前代码和上游接口核对过的部署步骤，尚未在 225H 真机上完成端到端测试，
+这是按当前代码和上游接口核对过的服务端部署步骤，尚未在 225H 真机上完成端到端测试，
 不包含实时率、首音延迟或 GPU/NPU 加速的实测承诺。
 
 ## 1. 选择部署方案
 
-本文只部署两个 AIHub 容器，直接连接目标机器上已经运行的 LLM、ASR、TTS HTTP 服务。
-不下载大模型，不安装新的模型服务，也不改变、启动或停止原有模型服务。
+本文只部署 AIHub 服务端的两个容器，直接连接目标机器上已经运行的 LLM、ASR、TTS
+HTTP 服务。不下载大模型，不安装新的模型服务，也不改变、启动或停止原有模型服务。
 
 | 服务 | 内容 | 本机地址 |
 | --- | --- | --- |
-| core | AIHub 管理端、网页客户端入口、可选 ESP32 网关 | 8765 / 8768 / 8766 |
+| core | AIHub 管理端、可选 ESP32 网关 | 8765 / 8766 |
 | processing | 录音后处理、转写、会议纪要；调用现有 ASR/LLM | 127.0.0.1:8790 |
+
+网页聊天客户端不在这套部署里：它的代码和发布属于 `aihub-client-web` 仓库，单独
+构建部署。本文的镜像不含客户端产物，服务端也用 `--no-client` 不监听客户端入口。
+需要网页客户端时，按该仓库说明生成产物，用准备脚本的默认模式（不加 `--no-client`）
+重建 core 镜像，并让服务端按默认参数启动客户端入口。
 
 部署前确认现有三个服务的 API 基础地址（含 `/v1`）、实际模型 ID、认证方式，以及
 TTS 的音色和 PCM 采样率。不要仅凭端口推断模型或接口兼容性。本文的
@@ -31,28 +36,21 @@ Buildx 和 Compose 插件。下面假定当前用户可以运行 `docker`，不�
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git curl ca-certificates python3 python3-venv ffmpeg nodejs npm
+sudo apt-get install -y git curl ca-certificates python3 python3-venv
 docker version
 docker compose version
 uname -m
-node --version
 ```
 
-`uname -m` 应为 `x86_64`。Node 使用 18 或更新版本；如果发行版自带版本太旧，先更新。
-所有镜像在这台 Intel 主机上构建/拉取，不直接使用 Mac 构建的 arm64 镜像。
+`uname -m` 应为 `x86_64`。所有镜像在这台 Intel 主机上构建/拉取，不直接使用 Mac
+构建的 arm64 镜像。
 
 ```bash
 mkdir -p "$HOME/aihub-src"
 cd "$HOME/aihub-src"
 git clone git@github.com:zhiwehu/aihub.git
-git clone git@github.com:zhiwehu/aihub-client-web.git
 cd aihub
 ./scripts/install.sh --dev
-cd ../aihub-client-web
-npm test
-npm run build
-cd ../aihub
-.venv/bin/python scripts/install-client.py "$HOME/aihub-src/aihub-client-web/dist"
 ```
 
 以上 SSH 克隆要求你的 GitHub SSH Key 已配置。ESP32 固件源码无需安装到服务器；
@@ -73,9 +71,13 @@ curl -fL --retry 3 \
   https://raw.githubusercontent.com/SYSTRAN/faster-whisper/master/faster_whisper/assets/silero_vad_v6.onnx \
   -o "$HOME/aihub-deploy/models/silero_vad_v6.onnx"
 sha256sum "$HOME/aihub-deploy/models/silero_vad_v6.onnx"
-VOICE_VAD_MODEL="$HOME/aihub-deploy/models/silero_vad_v6.onnx" ./deploy/docker/prepare-context.sh
+VOICE_VAD_MODEL="$HOME/aihub-deploy/models/silero_vad_v6.onnx" \
+  ./deploy/docker/prepare-context.sh --no-client
 docker build -t aihub-core:225h-20261106 deploy/docker/context
 ```
+
+`--no-client` 表示服务端镜像不含网页客户端产物；客户端入口也不会被服务端启动。
+镜像里仍带管理端（`apps/admin-web`），它只用于配置和查看记录，不是聊天客户端。
 
 后处理不在 core 镜像中，需要单独构建。复用刚生成的最小上下文，仅添加后处理包，
 避免把 `.venv`、录音、令牌和大模型发送给 Docker 构建器：
@@ -207,8 +209,9 @@ PYPATH
 
 采用 Linux host 网络，是因为当前后处理 CLI 监听 `127.0.0.1:8790`。
 这里各容器共用宿主网络，`127.0.0.1` 可以互通，无需 `host.docker.internal`，
-也不写 `ports:`。管理端和网页入口仍显式绑定回环地址。目标机器的现有模型即使只监听
-宿主机 `127.0.0.1`，两个 AIHub 容器也可以访问，无需改变其监听设置。
+也不写 `ports:`。管理端仍显式绑定回环地址；本方案不启动网页客户端入口。
+目标机器的现有模型即使只监听宿主机 `127.0.0.1`，两个 AIHub 容器也可以访问，
+无需改变其监听设置。
 
 ```yaml
 name: aihub-225h
@@ -238,12 +241,11 @@ services:
     environment:
       AIHUB_MODELS_URL: http://127.0.0.1:8790
       AIHUB_MODELS_TOKEN: ${AIHUB_MODELS_TOKEN:?initialize .env first}
-      AIHUB_CLIENT_PUBLIC_PORT: "8768"
     volumes:
       - ${AIHUB_DEPLOY}/data:/data
       - ${AIHUB_DEPLOY}/music:/music:ro
     command: ["--data", "/data", "--host", "127.0.0.1", "--port", "8765",
-              "--client-host", "127.0.0.1", "--client-port", "8768"]
+              "--no-client"]
 ```
 
 core 与 processing 必须挂载**同一个** data 目录并使用同一个处理服务令牌。
@@ -253,14 +255,15 @@ core 与 processing 必须挂载**同一个** data 目录并使用同一个处�
 请求不会带 `Authorization` 头。
 不要把旧 AIHub 部署同时连接到这个 data 目录。`.env` 和 `model-keys.env` 均不上传
 GitHub，不公开 `docker compose config` 的完整输出。修改实时语音模型设置后，重新连接
-客户端；修改后处理使用的 ASR/LLM 地址或模型时，同时更新 `.env` 并重新创建 processing
-容器。修改 Key 后重新创建两个 AIHub 容器。本文 Compose 不管理原有模型服务的生命周期。
+设备或另行部署的客户端；修改后处理使用的 ASR/LLM 地址或模型时，同时更新 `.env`
+并重新创建 processing 容器。修改 Key 后重新创建两个 AIHub 容器。本文 Compose
+不管理原有模型服务的生命周期。
 
 ## 6. 分步启动和验证
 
 先确认原有 LLM、ASR、TTS 服务正在运行。用它们已有的健康检查和调用示例验证
 地址、模型 ID、认证和音色，**不停止原有服务，也不要求释放其端口**。
-AIHub 自己需要空闲的 8765、8768、8790，可选设备入口需要 8766。
+AIHub 自己需要空闲的 8765、8790，可选设备入口需要 8766。
 
 需要核对的接口如下，基础 URL 和 Key 均使用第 4 节现有服务参数：
 
@@ -290,16 +293,16 @@ core 健康检查成功只代表管理服务可用，不能替代模型接口验
 URL 使用的是目标 Linux 主机的地址，而不是当前 Mac 的地址。不要运行 Mac 的
 `model-host.sh`、`configure.sh` 来替换本步骤，也不要覆盖原模型服务配置。
 
-在服务器本机打开 `http://127.0.0.1:8765`。其他电脑用 SSH 转发管理端和网页端：
+在服务器本机打开 `http://127.0.0.1:8765`。这是管理端，用于配置模型、查看设备和
+记录，不是聊天客户端。其他电脑用 SSH 只转发管理端：
 
 ```bash
-ssh -N -L 8765:127.0.0.1:8765 -L 8768:127.0.0.1:8768 用户名@服务器局域网IP
+ssh -N -L 8765:127.0.0.1:8765 用户名@服务器局域网IP
 ```
 
-在那台电脑打开 `http://127.0.0.1:8765`，创建网页客户端连接码，再打开
-`http://127.0.0.1:8768/demo/`，填写服务地址 `http://127.0.0.1:8768` 和连接码。
-先验证文字聊天，再允许麦克风，测试识别、回复、播放、打断；最后测试录音保存、
-回听、转写和纪要。浏览器麦克风需要 localhost 或 HTTPS，局域网 HTTP 地址不能替代。
+在那台电脑打开 `http://127.0.0.1:8765`，确认管理端能加载、`/api/status` 正常，
+再按第 8 节接入设备。实时语音链路的端到端验证用设备完成；网页客户端不在本部署内，
+需要时按 `aihub-client-web` 仓库的说明单独构建部署。
 
 ## 7. 音乐目录配置
 
@@ -319,8 +322,9 @@ MCP 仍填写 `/music`。仅在 MCP 中填写一个未挂载的宿主路径，�
 
 ## 8. 接入 ESP32
 
-网页测试通过后，再为 core 的 `command` 追加以下参数，将示例 IP 换成这台 Linux
-主机的固定局域网 IPv4 地址（不是容器地址，也不是 `127.0.0.1`）：
+管理端能正常打开、`/api/status` 正常后，再为 core 的 `command` 追加以下参数，
+将示例 IP 换成这台 Linux 主机的固定局域网 IPv4 地址（不是容器地址，也不是
+`127.0.0.1`）：
 
 ```yaml
               "--device-host", "192.168.1.50", "--device-bind", "192.168.1.50",
@@ -350,8 +354,7 @@ MCP 仍填写 `/music`。仅在 MCP 中填写一个未挂载的宿主路径，�
 
 只对设备所在局域网放行该端口，且不要做公网端口转发。接入后按顺序验证问候、
 天气/工具、播放音乐、暂停、继续、下一首和语音打断。协议自动测试通过不代表已经
-验证这台 ESP32 的真实扬声器效果。远程网页用户建议通过 HTTPS 反向代理连接 8768，
-管理入口继续私有；不要为了远程网页直接公开 8765。
+验证这台 ESP32 的真实扬声器效果。管理入口保持私有，不要直接公开 8765。
 
 ## 9. 日常维护与排错
 
@@ -375,7 +378,7 @@ docker compose start
 | 语音响应慢 | 分别测 ASR、LLM、TTS 耗时与内存；检查原服务负载和资源竞争，不在本文另装推理服务 |
 
 需要更新时先记录两个源码提交、现有模型服务参数、AIHub 镜像 ID，再备份。
-构建新镜像使用新标签，不覆盖旧标签；客户端有变化时重新构建并安装完整产物。
+构建新镜像使用新标签，不覆盖旧标签；服务端仍用 `--no-client` 重建，客户端另行发布。
 重复第 3 节的 core/processing 构建步骤，用新标签更新 Compose，保留 `.env` 和 data。
 
 做一致性备份前先停止相关容器，随后备份整个 data 目录和私有配置：
@@ -393,9 +396,10 @@ data 快照时，先另存升级后新增的录音和历史。不要执行 `down
 
 ## 10. 验证范围与参考
 
-本仓库已验证 core 的接口契约、独立客户端产物校验、录音后处理 HTTP 契约及音乐
-会话传输。本文 Compose 配置和配置生成步骤在交付前做静态/本地检查；原有服务的接口兼容性、
-中文语音质量、225H 的资源占用与 ESP32 端到端效果需要在目标机器按第 6/8 节验收。
+本仓库已验证服务端接口契约、客户端产物安装校验、录音后处理 HTTP 契约及音乐
+会话传输；本文只部署服务端，不包含网页客户端。本文 Compose 配置、配置生成步骤和
+服务端镜像在交付前做静态/本地检查。原有服务的接口兼容性、中文语音质量、
+225H 的资源占用与 ESP32 端到端效果需要在目标机器按第 6/8 节验收。
 完成后记录机器内存、镜像摘要、模型版本、首字/首音延迟及 ASR 实时率，结合原有模型服务的负载定位耗时。
 
 - [Intel 225H 官方规格](https://www.intel.com/content/www/us/en/products/sku/241749/intel-core-ultra-5-processor-225h-18m-cache-up-to-4-90-ghz/specifications.html)
